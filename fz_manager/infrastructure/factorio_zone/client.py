@@ -1,0 +1,195 @@
+"""Declarative REST client for the Factorio Zone API.
+
+Independent prototype: does not import from / integrate with
+`fz_manager.api.client.FZClient`. Endpoints mirror the ones implemented
+there (same URLs, same form fields, same size limits) but read
+`visitSecret`/`userToken` from `self` and expose pythonic snake_case
+parameters that map onto the camelCase form fields.
+"""
+
+from collections.abc import Callable
+
+import httpx
+
+from fz_manager.config import Settings
+from fz_manager.infrastructure.factorio_zone.models import LoginResponse, StartInstanceResponse
+from fz_manager.utils.api_router.http import ApiRouterHttp, UploadProgressFile
+
+# This runs at import time (module-level), so it deliberately uses
+# `Settings(_cli_parse_args=False)` rather than `get_settings()` -- the
+# latter parses `sys.argv` on first call, which would make importing this
+# module crash under foreign argv (tests, embedding, ...). See
+# `fz_manager.config.get_settings`'s docstring.
+router = ApiRouterHttp(
+    client=httpx.AsyncClient(
+        base_url=f"https://{Settings(_cli_parse_args=False).factorio_zone_endpoint}",
+    )
+)
+
+
+class FactorioZoneAPI:
+    def __init__(self, settings: Settings, visit_secret: str):
+        self.settings = settings
+        self.visit_secret: str = visit_secret
+        self.launch_id: str | None = None
+
+    @router.endpoint(response_model=LoginResponse)
+    def login(self, reconnected: bool = False) -> httpx.Request:
+        return router.build_request(
+            method="POST",
+            path="/api/user/login",
+            data={
+                "userToken": self.settings.user_token,
+                "visitSecret": self.visit_secret,
+                "reconnected": reconnected,
+            },
+        )
+
+    @router.endpoint()
+    def toggle_mod(self, mod_id: int, enabled: bool) -> httpx.Request:
+        return router.build_request(
+            method="POST",
+            path="/api/mod/toggle",
+            data={
+                "visitSecret": self.visit_secret,
+                "modId": mod_id,
+                "enabled": enabled,
+            },
+        )
+
+    @router.endpoint()
+    def delete_mod(self, mod_id: int) -> httpx.Request:
+        return router.build_request(
+            method="POST",
+            path="/api/mod/delete",
+            data={
+                "visitSecret": self.visit_secret,
+                "modId": mod_id,
+            },
+        )
+
+    @router.endpoint()
+    def upload_mod(
+        self,
+        name: str,
+        file,
+        size: int,
+        progress: Callable[[int], None] | None = None,
+    ) -> httpx.Request:
+        if size > self.settings.max_mod_size:
+            raise ValueError(f"Mod file must be under {self.settings.max_mod_size} bytes")
+        upload_file = UploadProgressFile(file, progress)
+        return router.build_request(
+            method="POST",
+            path="/api/mod/upload",
+            data={
+                "visitSecret": self.visit_secret,
+                "size": str(size),
+            },
+            files={"file": (name, upload_file, "application/x-zip-compressed")},
+        )
+
+    @router.endpoint()
+    def delete_save_slot(self, slot: str) -> httpx.Request:
+        return router.build_request(
+            method="POST",
+            path="/api/save/delete",
+            data={
+                "visitSecret": self.visit_secret,
+                "save": slot,
+            },
+        )
+
+    @router.endpoint()
+    def upload_save(
+        self, name: str, file, size: int, slot: str, progress: Callable[[int], None] | None = None
+    ) -> httpx.Request:
+        if size > self.settings.max_save_size:
+            raise ValueError(f"Save file must be under {self.settings.max_save_size} bytes")
+        upload_file = UploadProgressFile(file, progress)
+        return router.build_request(  # noqa
+            method="POST",
+            path="/api/save/upload",
+            data={
+                "visitSecret": self.visit_secret,
+                "size": str(size),
+                "save": slot,
+            },
+            files={"file": (name, upload_file, "application/x-zip-compressed")},
+        )
+
+    async def download_save_slot(
+        self,
+        slot: str,
+        file_path: str,
+        progress: Callable[[int], None] | None = None,
+    ) -> None:
+        """Stream a save file to `file_path`.
+
+        Not implemented via `@router.endpoint(...)`: the decorator assumes a JSON
+        response body, while this endpoint streams a file. This is a
+        deliberate gap in its coverage, not a bug -- streaming responses are
+        handled by hand here instead, via `router.send(...)`.
+        """
+        request = router.build_request(
+            method="POST",
+            path="/api/save/download",
+            data={
+                "visitSecret": self.visit_secret,
+                "save": slot,
+            },
+        )
+        response = await router.send(request, stream=True)
+        try:
+            if not response.is_success:
+                await response.aread()
+                raise httpx.HTTPStatusError(
+                    f"Error downloading save: {response.text}",
+                    request=request,
+                    response=response,
+                )
+            with open(file_path, "wb") as file:
+                async for chunk in response.aiter_bytes(8192):
+                    if chunk:
+                        file.write(chunk)
+                        if progress:
+                            progress(file.tell())
+        finally:
+            await response.aclose()
+
+    @router.endpoint()
+    def send_command(self, command: str) -> httpx.Request:
+        return router.build_request(
+            method="POST",
+            path="/api/instance/console",
+            data={
+                "visitSecret": self.visit_secret,
+                "launchId": self.launch_id,
+                "input": command,
+            },
+        )
+
+    @router.endpoint(response_model=StartInstanceResponse)
+    def start_instance(self, region: str, version: str, save: str) -> httpx.Request:
+        return router.build_request(
+            method="POST",
+            path="/api/instance/start",
+            data={
+                "visitSecret": self.visit_secret,
+                "region": region,
+                "version": version,
+                "save": save,
+            },
+        )
+
+    @router.endpoint()
+    def stop_instance(self) -> httpx.Request:
+        return router.build_request(
+            method="POST",
+            path="/api/instance/stop",
+            data={
+                "visitSecret": self.visit_secret,
+                "launchId": self.launch_id,
+            },
+            timeout=3600,
+        )
