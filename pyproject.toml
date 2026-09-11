@@ -7,9 +7,9 @@ repository = "https://github.com/michelsciortino/FZ-Manager"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-requests = "^2.26.0"
+httpx = "^0.27.0"
+certifi = ">=2021.10.8"
 websockets = "^10.1"
-requests-toolbelt = "^0.9.1"
 rich = "^10.16.1"
 prompt-toolkit = "^3.0.24"
 questionary = "^1.10.0"
@@ -19,8 +19,8 @@ aioconsole = "^0.3.3"
 pytest = "^5.2"
 
 [tool.poetry.scripts]
-fzm = 'fz_manager.main:main'
-fz-manager = 'fz_manager.main:main'
+fzm = 'fz_manager.cli:main'
+fz-manager = 'fz_manager.cli:main'
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

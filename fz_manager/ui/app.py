@@ -1,20 +1,19 @@
 import asyncio
-import json
-import os
 import re
-import zipfile
-from os import path, walk
+from os import path
 
 from aioconsole import aprint
 from rich.progress import Progress
 
-from fz_manager.factorio_zone_api import FZClient, ServerStatus
-from fz_manager.menu import ActionMenu, SelectMenu, CheckboxMenu, MenuEntry, PathMenu, AlertMenu, InputMenu
-from fz_manager.shell import Shell
+from fz_manager.api.client import FZClient, ServerStatus
+from fz_manager.services.instance import InstanceService
+from fz_manager.services.mods import ModsService
+from fz_manager.services.saves import SavesService
 from fz_manager.storage import Storage
-from fz_manager.titlebar import create_titlebar
+from fz_manager.ui.menu import ActionMenu, SelectMenu, CheckboxMenu, MenuEntry, PathMenu, AlertMenu, InputMenu
+from fz_manager.ui.shell import Shell
+from fz_manager.ui.titlebar import create_titlebar
 from fz_manager.utils import String, Term, Colors
-from fz_manager.utils import run_on_thread
 
 
 class Main:
@@ -24,12 +23,18 @@ class Main:
         self.client: (FZClient | None) = None
         self.shell: (Shell | None) = None
         self.titlebar = None
+        self.mods_service: (ModsService | None) = None
+        self.saves_service: (SavesService | None) = None
+        self.instance_service: (InstanceService | None) = None
 
     async def main(self):
         token = await self.choose_token()
         if token is None:
             return
         self.client = FZClient(token if not String.isblank(token) else None)
+        self.mods_service = ModsService(self.client)
+        self.saves_service = SavesService(self.client)
+        self.instance_service = InstanceService(self.client)
         self.shell = Shell(self.client, self.storage)
         self.titlebar = create_titlebar(self.client)
         asyncio.get_event_loop_policy().get_event_loop().create_task(self.client.connect())
@@ -112,26 +117,11 @@ class Main:
         if mods_folder_path is None:
             return
 
-        mod_settings_dat_path = path.join(mods_folder_path, dat)
-        info_json_path = path.join(mods_folder_path, 'info.json')
-        mod_settings_zip_path = path.join(mods_folder_path, "mod-settings.zip")
+        try:
+            mod_settings_zip_path = self.mods_service.create_mod_settings_zip(mods_folder_path)
+        except FileNotFoundError as ex:
+            return await AlertMenu(str(ex)).show()
 
-        if not path.exists(mod_settings_dat_path):
-            return await AlertMenu(f'Unable to find {dat}').show()
-
-        with open(info_json_path, 'w') as fp:
-            json.dump({
-                'name': dat,
-                'version': '0.1.0',
-                'title': dat,
-                'description': 'Mod settings for factorio.zone created with FZ-Manager tool by @michelsciortino'
-            }, fp)
-
-        zf = zipfile.ZipFile(mod_settings_zip_path, "w")
-        zf.write(mod_settings_dat_path)
-        zf.write(info_json_path)
-        zf.close()
-        os.remove(info_json_path)
         await AlertMenu(f'{mod_settings_zip_path} created').show()
 
     async def upload_mods_menu(self):
@@ -146,8 +136,7 @@ class Main:
         if mods_folder_path is None:
             return
 
-        root, _, filenames = next(walk(mods_folder_path), (None, None, []))
-        zip_files = list(filter(lambda n: n.endswith('.zip'), filenames))
+        root, zip_files = self.mods_service.list_zip_files(mods_folder_path)
 
         if len(zip_files) == 0:
             return await AlertMenu('No mod found in folder').show()
@@ -160,25 +149,20 @@ class Main:
         if not selected or not len(selected):
             return
 
-        mods: list[FZClient.Mod] = []
-        for entry in selected:
-            name = entry.name
-            file_path = path.join(root, name)
-            size = path.getsize(file_path)
-            mods.append(FZClient.Mod(name, file_path, size))
+        mods = self.mods_service.build_mods(root, [entry.name for entry in selected])
 
-        def callback(monitor):
-            progress.update(mod_task, completed=min(monitor.bytes_read, mod.size))
+        def callback(bytes_uploaded):
+            progress.update(mod_task, completed=min(bytes_uploaded, mod.size))
 
         try:
             with Progress() as progress:
                 main_task = progress.add_task('Uploading mods', total=len(mods))
                 for mod in mods:
                     mod_task = progress.add_task(f'Uploading {mod.name}', total=mod.size)
-                    await self.client.upload_mod(mod, callback)
+                    await self.mods_service.upload_mod(mod, callback)
                     progress.update(main_task, advance=1)
 
-        except BaseException as ex:
+        except Exception as ex:
             return await AlertMenu(str(ex) or ex.__class__.__name__).show()
 
     async def disable_mods_menu(self):
@@ -197,11 +181,11 @@ class Main:
             bar = progress.add_task('Applying changes', total=len(added) + len(deselected))
             for e in added:
                 progress.print(f'Enabling {e.name}')
-                await self.client.toggle_mod(e.ext_index, True)
+                await self.mods_service.toggle_mod(e.ext_index, True)
                 progress.update(bar, advance=1)
             for e in deselected:
                 progress.print(f'Disabling {e.name}')
-                await self.client.toggle_mod(e.ext_index, False)
+                await self.mods_service.toggle_mod(e.ext_index, False)
                 progress.update(bar, advance=1)
             progress.remove_task(bar)
 
@@ -218,7 +202,7 @@ class Main:
             bar = progress.add_task('Deleting mods', total=len(selected))
             for e in selected:
                 progress.print(f'Deleting {e.name}')
-                await self.client.delete_mod(e.ext_index)
+                await self.mods_service.delete_mod(e.ext_index)
                 progress.update(bar, advance=1)
             progress.remove_task(bar)
 
@@ -251,7 +235,7 @@ class Main:
             return
 
         slot_name = f'slot{slot.ext_index}'
-        if self.client.saves[slot_name] != f'slot {slot.ext_index} (empty)':
+        if self.saves_service.is_slot_used(slot.ext_index):
             choice = await SelectMenu(
                 f'Slot {slot.ext_index} is already used, do you want to replace it?',
                 [
@@ -263,18 +247,18 @@ class Main:
             if not choice or choice.ext_index == 1:
                 return
             else:
-                await self.client.delete_save_slot(slot_name)
+                await self.saves_service.delete_save_slot(slot_name)
 
         size = path.getsize(file_path)
-        save = FZClient.Save(filename, file_path, size, slot_name)
+        save = self.saves_service.build_save(filename, file_path, size, slot_name)
         with Progress() as progress:
             upload_task = progress.add_task(f'Uploading {filename}', total=size)
 
-            def callback(monitor):
-                progress.update(upload_task, completed=min(monitor.bytes_read, size))
+            def callback(bytes_uploaded):
+                progress.update(upload_task, completed=min(bytes_uploaded, size))
 
             try:
-                await self.client.upload_save(save, callback)
+                await self.saves_service.upload_save(save, callback)
                 progress.remove_task(upload_task)
             except Exception as ex:
                 progress.remove_task(upload_task)
@@ -300,7 +284,7 @@ class Main:
                 slot_name = f'slot{slot.ext_index}'
                 try:
                     progress.print(f'Deleting slot {slot.ext_index}')
-                    await self.client.delete_save_slot(slot_name)
+                    await self.saves_service.delete_save_slot(slot_name)
                 except Exception as ex:
                     await AlertMenu(str(ex)).show()
                 progress.update(delete_task, advance=1)
@@ -337,15 +321,18 @@ class Main:
         with Progress() as progress:
             download_task = progress.add_task(f'Downloading slots', total=len(selected))
             for slot in selected:
-                expected_size = float(re.search('(\d+.\d+)MB', slot.name)[1]) * 1048576
-                slot_task = progress.add_task(f'Slot {slot.ext_index}', total=expected_size)
-
-                def update(n_bytes):
-                    progress.update(slot_task, completed=n_bytes)
-
                 slot_name = f'slot{slot.ext_index}'
                 try:
-                    await self.client.download_save_slot(slot_name, path.join(directory, f'slot{slot.ext_index}.zip'), update)
+                    size_match = re.search(r'(\d+\.\d+)MB', slot.name)
+                    if size_match is None:
+                        raise ValueError(f'Unable to determine expected size for slot {slot.ext_index} from "{slot.name}"')
+                    expected_size = float(size_match[1]) * 1048576
+                    slot_task = progress.add_task(f'Slot {slot.ext_index}', total=expected_size)
+
+                    def update(n_bytes):
+                        progress.update(slot_task, completed=n_bytes)
+
+                    await self.saves_service.download_save_slot(slot_name, path.join(directory, f'slot{slot.ext_index}.zip'), update)
                     progress.update(slot_task, completed=expected_size)
                 except Exception as ex:
                     progress.print(ex)
@@ -359,11 +346,7 @@ class Main:
         if (slot := await self.choose_slot()) is None:
             return
         await aprint('Starting instance...')
-        self.client.add_logs_listener(aprint)
-        await run_on_thread(FZClient.start_instance, self.client, region, version, f'slot{slot}')
-        while not self.client.running and not self.client.server_address:
-            await asyncio.sleep(1)
-        self.client.remove_logs_listener(aprint)
+        await self.instance_service.start(region, version, slot, log_listener=aprint)
         self.storage.persist()
 
     async def attach_to_server(self):
@@ -371,15 +354,11 @@ class Main:
 
     async def stop_server(self):
         await aprint('Stopping instance...')
-        self.client.add_logs_listener(aprint)
-        await run_on_thread(FZClient.stop_instance, self.client)
-        while self.client.running:
-            await asyncio.sleep(1)
-        self.client.remove_logs_listener(aprint)
+        await self.instance_service.stop(log_listener=aprint)
 
     async def get_remote_slots(self):
-        slots: list[str] = self.client.saves.values().mapping.values()
-        return [MenuEntry(v, ext_index=i + 1) for i, v in enumerate(slots) if not v.endswith('(empty)')]
+        slots = self.saves_service.used_slots()
+        return [MenuEntry(v, ext_index=i) for i, v in slots]
 
     # AWS Region
     async def choose_region(self, show_titlebar=False):
@@ -423,7 +402,7 @@ class Main:
 
     async def choose_slot(self):
         slot = self.storage.get('slot')
-        slots: list[str] = self.client.saves.values().mapping.values()
+        slots = self.saves_service.slots()
         slot = await SelectMenu(
             message='Select slots to download:',
             entries=[MenuEntry(v, ext_index=i + 1) for i, v in enumerate(slots)],
@@ -444,10 +423,3 @@ class Main:
         return Term.colorize(Colors.FACTORIO_FG, Colors.FACTORIO_BG,
                              'Factorio Zone Manager', '         ', run, status,
                              end=Term.ENDL + Term.RESET)
-
-
-def main():
-    Term.cls()
-    program = Main()
-    asyncio.get_event_loop_policy().get_event_loop().run_until_complete(program.main())  # pragma: no cover
-    Term.cls()

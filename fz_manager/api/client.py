@@ -5,10 +5,11 @@ import ssl
 from inspect import iscoroutinefunction
 from typing import Callable, Coroutine
 
-import requests
-from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
+import certifi
+import httpx
 from websockets import client
 
+from fz_manager.api.models import Mod, Save
 from fz_manager.utils import Term
 
 FACTORIO_ZONE_ENDPOINT = 'factorio.zone'
@@ -21,9 +22,40 @@ class ServerStatus:
     RUNNING = 'RUNNING'
 
 
+class _UploadProgressFile:
+    """Wraps a binary file object and reports cumulative bytes read via `cb`.
+
+    Used in place of requests-toolbelt's MultipartEncoderMonitor to track
+    upload progress with httpx's native multipart encoding, which reads the
+    file object in chunks via `.read(size)`.
+    """
+
+    def __init__(self, file, cb: Callable = None):
+        self._file = file
+        self._cb = cb
+        self._bytes_read = 0
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._file.read(size)
+        self._bytes_read += len(chunk)
+        if self._cb:
+            self._cb(self._bytes_read)
+        return chunk
+
+    def seek(self, *args, **kwargs):
+        return self._file.seek(*args, **kwargs)
+
+    def tell(self):
+        return self._file.tell()
+
+    def fileno(self):
+        return self._file.fileno()
+
+
 class FZClient:
     def __init__(self, token: str = None):
         self.socket = None
+        self._http = httpx.AsyncClient()
         self.user_token = token
         self.visit_secret = None
         self.referrer_code = None
@@ -43,9 +75,7 @@ class FZClient:
         self.saves_sync = False
 
     async def connect(self):
-        ssl_context = ssl.SSLContext()
-        ssl_context.verify_mode = ssl.CERT_NONE
-        ssl_context.check_hostname = False
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
         self.socket = await client.connect(
             f'wss://{FACTORIO_ZONE_ENDPOINT}/ws',
             ping_interval=30,
@@ -58,7 +88,7 @@ class FZClient:
             match data['type']:
                 case 'visit':
                     self.visit_secret = data['secret']
-                    self.login()
+                    await self.login()
                 case 'options':
                     match data['name']:
                         case 'regions':
@@ -129,15 +159,15 @@ class FZClient:
                 listener(log)
 
     # ------ USER APIs ------------------------------------------------------------------
-    def login(self):
-        resp = requests.post(
+    async def login(self):
+        resp = await self._http.post(
             url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/user/login',
             data={
                 'userToken': self.user_token,
                 'visitSecret': self.visit_secret,
                 'reconnected': False
             })
-        if resp.ok:
+        if resp.is_success:
             body = resp.json()
             self.user_token = body['userToken']
             self.referrer_code = body['referralCode']
@@ -145,69 +175,54 @@ class FZClient:
             raise Exception(f'Error logging in: {resp.text}')
 
     # ------ MODs APIs ------------------------------------------------------------------
-    class Mod:
-        def __init__(self, name, file_path, size):
-            self.name = name
-            self.filePath = file_path
-            self.size = size
-
     async def toggle_mod(self, mod_id: int, enabled: bool):
         self.mods_sync = False
-        resp = requests.post(
+        resp = await self._http.post(
             url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/mod/toggle',
             data={
                 'visitSecret': self.visit_secret,
                 'modId': mod_id,
                 'enabled': enabled
             })
-        if not resp.ok:
+        if not resp.is_success:
             self.mods_sync = True
             raise Exception(f'Error in toggling mod: {resp.text}')
 
     async def delete_mod(self, mod_id: int):
         self.mods_sync = False
-        resp = requests.post(
+        resp = await self._http.post(
             url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/mod/delete',
             data={
                 'visitSecret': self.visit_secret,
                 'modId': mod_id
             })
-        if not resp.ok:
+        if not resp.is_success:
             self.mods_sync = True
             raise Exception(f'Error in deleting mod: {resp.text}')
 
     async def upload_mod(self, mod: Mod, cb: Callable = None):
-        file = open(mod.filePath, 'rb')
         if mod.size > 268435456:  # 256MB
             raise Exception(f'Mod file must be under 256MB')
 
-        encoder = MultipartEncoder({
-            'visitSecret': self.visit_secret,
-            'file': (mod.name, file, 'application/x-zip-compressed'),
-            'size': str(mod.size)
-        })
-        monitor = MultipartEncoderMonitor(encoder, cb)
         self.mods_sync = False
-        resp = requests.post(
-            f'https://{FACTORIO_ZONE_ENDPOINT}/api/mod/upload',
-            headers={'content-type': monitor.content_type},
-            data=monitor
-        )
-        if not resp.ok:
+        with open(mod.filePath, 'rb') as file:
+            upload_file = _UploadProgressFile(file, cb)
+            resp = await self._http.post(
+                f'https://{FACTORIO_ZONE_ENDPOINT}/api/mod/upload',
+                data={
+                    'visitSecret': self.visit_secret,
+                    'size': str(mod.size)
+                },
+                files={'file': (mod.name, upload_file, 'application/x-zip-compressed')}
+            )
+        if not resp.is_success:
             self.mods_sync = True
             raise Exception(f'Error uploading mod: {resp.text}')
 
     # ------ SAVE APIs ------------------------------------------------------------------
-    class Save:
-        def __init__(self, name: str, file_path: str, size: int, slot: str):
-            self.name = name
-            self.filePath = file_path
-            self.size = size
-            self.slot = slot
-
     async def delete_save_slot(self, slot: str):
         self.saves_sync = False
-        resp = requests.post(
+        resp = await self._http.post(
             url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/save/delete',
             data={
                 'visitSecret': self.visit_secret,
@@ -218,48 +233,47 @@ class FZClient:
             raise Exception(f'Error deleting save: {resp.text}')
 
     async def download_save_slot(self, slot: str, file_path: str, cb: Callable):
-        with requests.post(
+        async with self._http.stream(
+                'POST',
                 url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/save/download',
                 data={
                     'visitSecret': self.visit_secret,
                     'save': slot
-                },
-                stream=True
+                }
         ) as resp:
             if resp.status_code != 200:
                 self.saves_sync = True
+                await resp.aread()
                 raise Exception(f'Error downloading save: {resp.text}')
             with open(file_path, 'wb') as file:
-                for chunk in resp.iter_content(chunk_size=8192):
+                async for chunk in resp.aiter_bytes(8192):
                     if chunk:
                         file.write(chunk)
                         cb(file.tell())
-                file.close()
 
     async def upload_save(self, save: Save, cb: Callable = None):
-        file = open(save.filePath, 'rb')
         if save.size > 100663296:  # 96MB
             raise Exception('Save file must be under 96MB')
-        encoder = MultipartEncoder({
-            'visitSecret': self.visit_secret,
-            'file': (save.name, file, 'application/x-zip-compressed'),
-            'size': str(save.size),
-            'save': save.slot
-        })
-        monitor = MultipartEncoderMonitor(encoder, cb)
+
         self.saves_sync = False
-        resp = requests.post(
-            url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/save/upload',
-            headers={'content-type': monitor.content_type},
-            data=monitor
-        )
-        if not resp.ok:
+        with open(save.filePath, 'rb') as file:
+            upload_file = _UploadProgressFile(file, cb)
+            resp = await self._http.post(
+                url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/save/upload',
+                data={
+                    'visitSecret': self.visit_secret,
+                    'size': str(save.size),
+                    'save': save.slot
+                },
+                files={'file': (save.name, upload_file, 'application/x-zip-compressed')}
+            )
+        if not resp.is_success:
             self.saves_sync = True
             raise Exception(f'Error uploading save: {resp.text}')
 
     # ------ INSTANCE APIs --------------------------------------------------------------
-    def send_command(self, command):
-        resp = requests.post(
+    async def send_command(self, command):
+        resp = await self._http.post(
             url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/instance/console',
             data={
                 'visitSecret': self.visit_secret,
@@ -269,8 +283,8 @@ class FZClient:
         if resp.status_code != 200:
             raise Exception(f'Error sending console command: {resp.text}')
 
-    def start_instance(self, region, version, save):
-        resp = requests.post(
+    async def start_instance(self, region, version, save):
+        resp = await self._http.post(
             url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/instance/start',
             data={
                 'visitSecret': self.visit_secret,
@@ -282,8 +296,8 @@ class FZClient:
             raise Exception(f'Error starting instance: {resp.text}')
         self.launch_id = resp.json()['launchId']
 
-    def stop_instance(self):
-        resp = requests.post(
+    async def stop_instance(self):
+        resp = await self._http.post(
             url=f'https://{FACTORIO_ZONE_ENDPOINT}/api/instance/stop',
             data={
                 'visitSecret': self.visit_secret,

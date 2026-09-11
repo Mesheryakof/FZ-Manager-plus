@@ -3,7 +3,7 @@ from prompt_toolkit.formatted_text import merge_formatted_text, to_formatted_tex
 from prompt_toolkit.layout.containers import Container, DynamicContainer, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 
-from fz_manager.factorio_zone_api import FZClient
+from fz_manager.api.client import FZClient
 from fz_manager.utils import Colors
 
 

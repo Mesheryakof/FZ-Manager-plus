@@ -9,10 +9,10 @@ from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl a
 from prompt_toolkit.layout.processors import Processor, Transformation, TransformationInput
 from prompt_toolkit.output import ColorDepth
 
-from fz_manager.factorio_zone_api import FZClient
+from fz_manager.api.client import FZClient
 from fz_manager.storage import Storage
-from fz_manager.titlebar import create_titlebar
-from fz_manager.utils import Colors, Term, run_on_thread
+from fz_manager.ui.titlebar import create_titlebar
+from fz_manager.utils import Colors, Term
 
 COMMAND_SYMBOL = '>_'
 
@@ -41,7 +41,7 @@ class Shell:
             self.push_log(Term.info('COMMAND:', command))
             try:
                 self.command_buffer.reset(append_to_history=True)
-                await run_on_thread(FZClient.send_command, self.client, command)
+                await self.client.send_command(command)
             except Exception as ex:
                 self.push_log(Term.error('Error:', str(ex)))
 

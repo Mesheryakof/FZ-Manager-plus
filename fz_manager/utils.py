@@ -1,7 +1,4 @@
-import asyncio
-import inspect
 import os
-import threading
 
 
 class Term:
@@ -77,37 +74,3 @@ class String:
     @staticmethod
     def isblank(string: (str | None)):
         return string is None or string.strip() == ''
-
-
-class Thread(threading.Thread):
-    def __init__(self, group=None, target=None, name=None, args=(), kwargs=None):
-        self._target = target
-        self._args = args
-        if kwargs is None:
-            kwargs = {}
-        self._kwargs = kwargs
-        self._return = None
-        super().__init__(group, target, name, args, kwargs)
-        self._alive = True
-
-    def run(self):
-        if self._target is not None:
-            self._return = self._target(*self._args, **self._kwargs)
-            if inspect.iscoroutinefunction(self._target):
-                self._return = asyncio.run(self._return)
-        self._alive = False
-
-    def join(self, **kwargs) -> any:
-        super().join(**kwargs)
-        return self._return
-
-    def is_alive(self) -> bool:
-        return self._alive
-
-
-async def run_on_thread(fn, *args):
-    t = Thread(target=fn, args=args)
-    t.start()
-    while t.is_alive():
-        await asyncio.sleep(0.5)
-    return t.join()
