@@ -10,22 +10,29 @@ from fz_manager.services.instance import InstanceService
 from fz_manager.services.mods import ModsService
 from fz_manager.services.saves import SavesService
 from fz_manager.storage import Storage
-from fz_manager.ui.menu import ActionMenu, SelectMenu, CheckboxMenu, MenuEntry, PathMenu, AlertMenu, InputMenu
+from fz_manager.terminal import Colors, String, Term
+from fz_manager.ui.menu import (
+    ActionMenu,
+    AlertMenu,
+    CheckboxMenu,
+    InputMenu,
+    MenuEntry,
+    PathMenu,
+    SelectMenu,
+)
 from fz_manager.ui.shell import Shell
 from fz_manager.ui.titlebar import create_titlebar
-from fz_manager.utils import String, Term, Colors
 
 
 class Main:
-
     def __init__(self) -> None:
         self.storage = Storage()
-        self.client: (FZClient | None) = None
-        self.shell: (Shell | None) = None
+        self.client: FZClient | None = None
+        self.shell: Shell | None = None
         self.titlebar = None
-        self.mods_service: (ModsService | None) = None
-        self.saves_service: (SavesService | None) = None
-        self.instance_service: (InstanceService | None) = None
+        self.mods_service: ModsService | None = None
+        self.saves_service: SavesService | None = None
+        self.instance_service: InstanceService | None = None
 
     async def main(self):
         token = await self.choose_token()
@@ -39,8 +46,8 @@ class Main:
         self.titlebar = create_titlebar(self.client)
         asyncio.get_event_loop_policy().get_event_loop().create_task(self.client.connect())
         await self.client.wait_sync()
-        self.storage.store('userToken', self.client.user_token)
-        if token == '':
+        self.storage.store("userToken", self.client.user_token)
+        if token == "":
             self.storage.token_history.append_string(self.client.user_token)
         await self.main_menu()
 
@@ -48,71 +55,89 @@ class Main:
     async def main_menu(self):
         while True:
             action = await ActionMenu(
-                message='Main menu',
+                message="Main menu",
                 entries=[
-                    MenuEntry('Start server', self.start_server, condition=lambda: not self.client.running),
-                    MenuEntry('Attach to server', self.attach_to_server, condition=lambda: self.client.running),
-                    MenuEntry('Stop server', self.stop_server,
-                              condition=lambda: self.client.running and self.client.server_status == ServerStatus.RUNNING),
-                    MenuEntry('Manage mods', self.manage_mods_menu, condition=lambda: not self.client.running),
-                    MenuEntry('Manage saves', self.manage_saves_menu, condition=lambda: not self.client.running),
-                    MenuEntry('Exit')
+                    MenuEntry(
+                        "Start server", self.start_server, condition=lambda: not self.client.running
+                    ),
+                    MenuEntry(
+                        "Attach to server",
+                        self.attach_to_server,
+                        condition=lambda: self.client.running,
+                    ),
+                    MenuEntry(
+                        "Stop server",
+                        self.stop_server,
+                        condition=lambda: self.client.running
+                        and self.client.server_status == ServerStatus.RUNNING,
+                    ),
+                    MenuEntry(
+                        "Manage mods",
+                        self.manage_mods_menu,
+                        condition=lambda: not self.client.running,
+                    ),
+                    MenuEntry(
+                        "Manage saves",
+                        self.manage_saves_menu,
+                        condition=lambda: not self.client.running,
+                    ),
+                    MenuEntry("Exit"),
                 ],
                 titlebar=self.titlebar,
-                clear_screen=True
+                clear_screen=True,
             ).show()
             Term.cls()
-            if action is None or action.name == 'Exit':
+            if action is None or action.name == "Exit":
                 break
 
     async def manage_mods_menu(self):
         while True:
             action = await ActionMenu(
-                message='Manage mods',
+                message="Manage mods",
                 entries=[
-                    MenuEntry('Create mod-settings.zip', self.create_mod_settings),
-                    MenuEntry('Upload mods', self.upload_mods_menu),
-                    MenuEntry('Enable/Disable uploaded mods', self.disable_mods_menu),
-                    MenuEntry('Delete uploaded mods', self.delete_mods_menu),
-                    MenuEntry('Back')
+                    MenuEntry("Create mod-settings.zip", self.create_mod_settings),
+                    MenuEntry("Upload mods", self.upload_mods_menu),
+                    MenuEntry("Enable/Disable uploaded mods", self.disable_mods_menu),
+                    MenuEntry("Delete uploaded mods", self.delete_mods_menu),
+                    MenuEntry("Back"),
                 ],
                 titlebar=self.titlebar,
-                clear_screen=True
+                clear_screen=True,
             ).show()
             Term.cls()
-            if action is None or action.name == 'Back':
+            if action is None or action.name == "Back":
                 break
 
     async def manage_saves_menu(self):
         while True:
             action = await ActionMenu(
-                message='Main menu',
+                message="Main menu",
                 entries=[
-                    MenuEntry('Upload save', self.upload_save_menu),
-                    MenuEntry('Delete save', self.delete_save_menu),
-                    MenuEntry('Download save', self.download_save_menu),
-                    MenuEntry('Back')
+                    MenuEntry("Upload save", self.upload_save_menu),
+                    MenuEntry("Delete save", self.delete_save_menu),
+                    MenuEntry("Download save", self.download_save_menu),
+                    MenuEntry("Back"),
                 ],
                 titlebar=self.titlebar,
-                clear_screen=True
+                clear_screen=True,
             ).show()
             Term.cls()
-            if action is None or action.name == 'Back':
+            if action is None or action.name == "Back":
                 break
 
     async def create_mod_settings(self):
-        dat = 'mod-settings.dat'
+        dat = "mod-settings.dat"
 
         def validator(p: str) -> bool:
             return path.exists(path.join(p, dat))
 
         mods_folder_path = await PathMenu(
-            'Insert path to mods folder: ',
+            "Insert path to mods folder: ",
             only_directories=True,
             validator=validator,
             load_last_value=True,
             titlebar=self.titlebar,
-            history=self.storage.mods_path_history
+            history=self.storage.mods_path_history,
         ).show()
         if mods_folder_path is None:
             return
@@ -122,16 +147,16 @@ class Main:
         except FileNotFoundError as ex:
             return await AlertMenu(str(ex)).show()
 
-        await AlertMenu(f'{mod_settings_zip_path} created').show()
+        await AlertMenu(f"{mod_settings_zip_path} created").show()
 
     async def upload_mods_menu(self):
         mods_folder_path = await PathMenu(
-            'Insert path to mods folder: ',
+            "Insert path to mods folder: ",
             only_directories=True,
             validator=lambda p: path.exists(p),
             titlebar=self.titlebar,
             load_last_value=True,
-            history=self.storage.mods_path_history
+            history=self.storage.mods_path_history,
         ).show()
         if mods_folder_path is None:
             return
@@ -139,10 +164,10 @@ class Main:
         root, zip_files = self.mods_service.list_zip_files(mods_folder_path)
 
         if len(zip_files) == 0:
-            return await AlertMenu('No mod found in folder').show()
+            return await AlertMenu("No mod found in folder").show()
 
         selected, _, _ = await CheckboxMenu(
-            message='Choose mods to upload',
+            message="Choose mods to upload",
             entries=[MenuEntry(f, pre_selected=True) for f in zip_files],
         ).show()
 
@@ -156,9 +181,9 @@ class Main:
 
         try:
             with Progress() as progress:
-                main_task = progress.add_task('Uploading mods', total=len(mods))
+                main_task = progress.add_task("Uploading mods", total=len(mods))
                 for mod in mods:
-                    mod_task = progress.add_task(f'Uploading {mod.name}', total=mod.size)
+                    mod_task = progress.add_task(f"Uploading {mod.name}", total=mod.size)
                     await self.mods_service.upload_mod(mod, callback)
                     progress.update(main_task, advance=1)
 
@@ -167,81 +192,80 @@ class Main:
 
     async def disable_mods_menu(self):
         if not self.client.mods or not len(self.client.mods):
-            return await AlertMenu('No uploaded mods found', titlebar=self.titlebar).show()
+            return await AlertMenu("No uploaded mods found", titlebar=self.titlebar).show()
 
         _, added, deselected = await CheckboxMenu(
-            message='Enable/Disable mods',
-            entries=[MenuEntry(m['text'], pre_selected=m['enabled'], ext_index=m['id']) for m in self.client.mods],
-            titlebar=self.titlebar
+            message="Enable/Disable mods",
+            entries=[
+                MenuEntry(m["text"], pre_selected=m["enabled"], ext_index=m["id"])
+                for m in self.client.mods
+            ],
+            titlebar=self.titlebar,
         ).show()
         if added is None or deselected is None:
             return
 
         with Progress() as progress:
-            bar = progress.add_task('Applying changes', total=len(added) + len(deselected))
+            bar = progress.add_task("Applying changes", total=len(added) + len(deselected))
             for e in added:
-                progress.print(f'Enabling {e.name}')
+                progress.print(f"Enabling {e.name}")
                 await self.mods_service.toggle_mod(e.ext_index, True)
                 progress.update(bar, advance=1)
             for e in deselected:
-                progress.print(f'Disabling {e.name}')
+                progress.print(f"Disabling {e.name}")
                 await self.mods_service.toggle_mod(e.ext_index, False)
                 progress.update(bar, advance=1)
             progress.remove_task(bar)
 
     async def delete_mods_menu(self):
         if not self.client.mods or not len(self.client.mods):
-            return await AlertMenu('No uploaded mods found', titlebar=self.titlebar).show()
+            return await AlertMenu("No uploaded mods found", titlebar=self.titlebar).show()
 
         selected, _, _ = await CheckboxMenu(
-            message='Delete mods',
-            entries=[MenuEntry(m['text'], ext_index=m['id']) for m in self.client.mods],
-            titlebar=self.titlebar
+            message="Delete mods",
+            entries=[MenuEntry(m["text"], ext_index=m["id"]) for m in self.client.mods],
+            titlebar=self.titlebar,
         ).show()
         with Progress() as progress:
-            bar = progress.add_task('Deleting mods', total=len(selected))
+            bar = progress.add_task("Deleting mods", total=len(selected))
             for e in selected:
-                progress.print(f'Deleting {e.name}')
+                progress.print(f"Deleting {e.name}")
                 await self.mods_service.delete_mod(e.ext_index)
                 progress.update(bar, advance=1)
             progress.remove_task(bar)
 
     async def upload_save_menu(self):
         file_path = await PathMenu(
-            'Insert path to save file: ',
-            validator=lambda p: path.exists(p) and path.splitext(p)[1] == '.zip',
+            "Insert path to save file: ",
+            validator=lambda p: path.exists(p) and path.splitext(p)[1] == ".zip",
             load_last_value=True,
             titlebar=self.titlebar,
-            history=self.storage.saves_path_history
+            history=self.storage.saves_path_history,
         ).show()
 
         if file_path is None:
             return
 
         if not path.exists(file_path):
-            return await AlertMenu(f'{file_path} save file does not exist.').show()
+            return await AlertMenu(f"{file_path} save file does not exist.").show()
 
         file_extension = path.splitext(file_path)[1]
         filename = path.basename(file_path)
-        if file_extension != '.zip':
-            return await AlertMenu('Save file must be a zip archive.').show()
+        if file_extension != ".zip":
+            return await AlertMenu("Save file must be a zip archive.").show()
 
         slot = await SelectMenu(
-            'Select save slot:',
-            [MenuEntry(f'slot {i}', ext_index=i) for i in range(1, 10)]
+            "Select save slot:", [MenuEntry(f"slot {i}", ext_index=i) for i in range(1, 10)]
         ).show()
 
         if not slot:
             return
 
-        slot_name = f'slot{slot.ext_index}'
+        slot_name = f"slot{slot.ext_index}"
         if self.saves_service.is_slot_used(slot.ext_index):
             choice = await SelectMenu(
-                f'Slot {slot.ext_index} is already used, do you want to replace it?',
-                [
-                    MenuEntry('Yes', ext_index=0),
-                    MenuEntry('No', ext_index=1)
-                ]
+                f"Slot {slot.ext_index} is already used, do you want to replace it?",
+                [MenuEntry("Yes", ext_index=0), MenuEntry("No", ext_index=1)],
             ).show()
 
             if not choice or choice.ext_index == 1:
@@ -252,7 +276,7 @@ class Main:
         size = path.getsize(file_path)
         save = self.saves_service.build_save(filename, file_path, size, slot_name)
         with Progress() as progress:
-            upload_task = progress.add_task(f'Uploading {filename}', total=size)
+            upload_task = progress.add_task(f"Uploading {filename}", total=size)
 
             def callback(bytes_uploaded):
                 progress.update(upload_task, completed=min(bytes_uploaded, size))
@@ -267,23 +291,21 @@ class Main:
     async def delete_save_menu(self):
         entries = await self.get_remote_slots()
         if len(entries) == 0:
-            return await AlertMenu('All the slots are empty', titlebar=self.titlebar).show()
+            return await AlertMenu("All the slots are empty", titlebar=self.titlebar).show()
 
         selected, _, _ = await CheckboxMenu(
-            message='Select slots to delete:',
-            entries=entries,
-            titlebar=self.titlebar
+            message="Select slots to delete:", entries=entries, titlebar=self.titlebar
         ).show()
 
         if not selected:
             return
 
         with Progress() as progress:
-            delete_task = progress.add_task(f'', total=len(selected))
+            delete_task = progress.add_task("", total=len(selected))
             for slot in selected:
-                slot_name = f'slot{slot.ext_index}'
+                slot_name = f"slot{slot.ext_index}"
                 try:
-                    progress.print(f'Deleting slot {slot.ext_index}')
+                    progress.print(f"Deleting slot {slot.ext_index}")
                     await self.saves_service.delete_save_slot(slot_name)
                 except Exception as ex:
                     await AlertMenu(str(ex)).show()
@@ -292,47 +314,49 @@ class Main:
     async def download_save_menu(self):
         entries = await self.get_remote_slots()
         if len(entries) == 0:
-            return await AlertMenu('All the slots are empty', titlebar=self.titlebar).show()
+            return await AlertMenu("All the slots are empty", titlebar=self.titlebar).show()
 
         selected, _, _ = await CheckboxMenu(
-            message='Select slots to download:',
-            entries=entries,
-            titlebar=self.titlebar
+            message="Select slots to download:", entries=entries, titlebar=self.titlebar
         ).show()
 
         if not selected:
             return
 
         directory = await PathMenu(
-            'Insert download directory path: ',
+            "Insert download directory path: ",
             only_directories=True,
             load_last_value=True,
-            history=self.storage.saves_path_history
+            history=self.storage.saves_path_history,
         ).show()
 
         if directory is None:
             return
 
         if not path.exists(directory):
-            return await AlertMenu('Directory not found').show()
+            return await AlertMenu("Directory not found").show()
         if not path.isdir(directory):
-            return await AlertMenu(f'{directory} is not a directory').show()
+            return await AlertMenu(f"{directory} is not a directory").show()
 
         with Progress() as progress:
-            download_task = progress.add_task(f'Downloading slots', total=len(selected))
+            download_task = progress.add_task("Downloading slots", total=len(selected))
             for slot in selected:
-                slot_name = f'slot{slot.ext_index}'
+                slot_name = f"slot{slot.ext_index}"
                 try:
-                    size_match = re.search(r'(\d+\.\d+)MB', slot.name)
+                    size_match = re.search(r"(\d+\.\d+)MB", slot.name)
                     if size_match is None:
-                        raise ValueError(f'Unable to determine expected size for slot {slot.ext_index} from "{slot.name}"')
+                        raise ValueError(
+                            f'Unable to determine expected size for slot {slot.ext_index} from "{slot.name}"'
+                        )
                     expected_size = float(size_match[1]) * 1048576
-                    slot_task = progress.add_task(f'Slot {slot.ext_index}', total=expected_size)
+                    slot_task = progress.add_task(f"Slot {slot.ext_index}", total=expected_size)
 
-                    def update(n_bytes):
+                    def update(n_bytes, slot_task=slot_task):
                         progress.update(slot_task, completed=n_bytes)
 
-                    await self.saves_service.download_save_slot(slot_name, path.join(directory, f'slot{slot.ext_index}.zip'), update)
+                    await self.saves_service.download_save_slot(
+                        slot_name, path.join(directory, f"slot{slot.ext_index}.zip"), update
+                    )
                     progress.update(slot_task, completed=expected_size)
                 except Exception as ex:
                     progress.print(ex)
@@ -345,7 +369,7 @@ class Main:
             return
         if (slot := await self.choose_slot()) is None:
             return
-        await aprint('Starting instance...')
+        await aprint("Starting instance...")
         await self.instance_service.start(region, version, slot, log_listener=aprint)
         self.storage.persist()
 
@@ -353,7 +377,7 @@ class Main:
         await self.shell.show()
 
     async def stop_server(self):
-        await aprint('Stopping instance...')
+        await aprint("Stopping instance...")
         await self.instance_service.stop(log_listener=aprint)
 
     async def get_remote_slots(self):
@@ -363,24 +387,24 @@ class Main:
     # AWS Region
     async def choose_region(self, show_titlebar=False):
         regions = sorted(self.client.regions.items())
-        region = self.storage.get('region')
+        region = self.storage.get("region")
 
         region = await SelectMenu(
-            message='Choose a region:',
-            entries=[MenuEntry(f'{r[0]} - {r[1]}', ext_index=r[0]) for r in regions],
+            message="Choose a region:",
+            entries=[MenuEntry(f"{r[0]} - {r[1]}", ext_index=r[0]) for r in regions],
             default=region,
-            titlebar=self.titlebar if show_titlebar else None
+            titlebar=self.titlebar if show_titlebar else None,
         ).show()
         if region is None:
             return
-        self.storage.store('region', region.ext_index)
+        self.storage.store("region", region.ext_index)
         return region.ext_index
 
     # Factorio Version
     # noinspection PyProtectedMember
     async def choose_token(self):
         menu = InputMenu(
-            message='Insert userToken:',
+            message="Insert userToken:",
             titlebar=create_titlebar(),
             clear_screen=True,
             load_last_value=True,
@@ -389,37 +413,43 @@ class Main:
         return await menu.show()
 
     async def choose_factorio_version(self):
-        version = self.storage.get('version')
+        version = self.storage.get("version")
         version = await SelectMenu(
-            message='Choose a Factorio version:',
+            message="Choose a Factorio version:",
             entries=[MenuEntry(v, ext_index=v) for v in self.client.versions],
-            default=version
+            default=version,
         ).show()
         if version is None:
             return
-        self.storage.store('version', version.ext_index)
+        self.storage.store("version", version.ext_index)
         return version.ext_index
 
     async def choose_slot(self):
-        slot = self.storage.get('slot')
+        slot = self.storage.get("slot")
         slots = self.saves_service.slots()
         slot = await SelectMenu(
-            message='Select slots to download:',
+            message="Select slots to download:",
             entries=[MenuEntry(v, ext_index=i + 1) for i, v in enumerate(slots)],
-            default=slot
+            default=slot,
         ).show()
         if slot is None:
             return None
-        self.storage.store('slot', slot.ext_index)
+        self.storage.store("slot", slot.ext_index)
         return slot.ext_index
 
     def create_header(self):
         if self.client and self.client.server_address:
-            run = f'Server running at: {self.client.server_address}'
-            status = f'status: {self.client.server_status}'
+            run = f"Server running at: {self.client.server_address}"
+            status = f"status: {self.client.server_status}"
         else:
-            run = ''
-            status = ''
-        return Term.colorize(Colors.FACTORIO_FG, Colors.FACTORIO_BG,
-                             'Factorio Zone Manager', '         ', run, status,
-                             end=Term.ENDL + Term.RESET)
+            run = ""
+            status = ""
+        return Term.colorize(
+            Colors.FACTORIO_FG,
+            Colors.FACTORIO_BG,
+            "Factorio Zone Manager",
+            "         ",
+            run,
+            status,
+            end=Term.ENDL + Term.RESET,
+        )

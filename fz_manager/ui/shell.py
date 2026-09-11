@@ -1,20 +1,21 @@
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.formatted_text import fragment_list_to_text, to_formatted_text, ANSI
+from prompt_toolkit.formatted_text import ANSI, fragment_list_to_text, to_formatted_text
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import Layout
-from prompt_toolkit.layout.containers import Window, HSplit, VSplit
-from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl as FtC
+from prompt_toolkit.layout.containers import HSplit, VSplit, Window
+from prompt_toolkit.layout.controls import BufferControl
+from prompt_toolkit.layout.controls import FormattedTextControl as FtC
 from prompt_toolkit.layout.processors import Processor, Transformation, TransformationInput
 from prompt_toolkit.output import ColorDepth
 
 from fz_manager.api.client import FZClient
 from fz_manager.storage import Storage
+from fz_manager.terminal import Colors, Term
 from fz_manager.ui.titlebar import create_titlebar
-from fz_manager.utils import Colors, Term
 
-COMMAND_SYMBOL = '>_'
+COMMAND_SYMBOL = ">_"
 
 
 class FormatText(Processor):
@@ -38,12 +39,12 @@ class Shell:
             command = self.command_buffer.text.strip()
             if not command:
                 return
-            self.push_log(Term.info('COMMAND:', command))
+            self.push_log(Term.info("COMMAND:", command))
             try:
                 self.command_buffer.reset(append_to_history=True)
                 await self.client.send_command(command)
             except Exception as ex:
-                self.push_log(Term.error('Error:', str(ex)))
+                self.push_log(Term.error("Error:", str(ex)))
 
         @command_kb.add(Keys.Up)
         def suggest_up(_):
@@ -54,33 +55,51 @@ class Shell:
             self.command_buffer.history_forward()
 
         command_window = Window(
-            BufferControl(self.command_buffer,
-                          key_bindings=command_kb,
-                          focusable=True,
-                          focus_on_click=True)
+            BufferControl(
+                self.command_buffer, key_bindings=command_kb, focusable=True, focus_on_click=True
+            )
         )
-        self.layout = Layout(HSplit([
-            create_titlebar(client),
-            Window(BufferControl(self.logs_buffer,
-                                 focusable=False,
-                                 input_processors=[FormatText()]), wrap_lines=False, style='bg:#212121'),
-            VSplit([
-                Window(FtC(COMMAND_SYMBOL), width=len(COMMAND_SYMBOL) + 1, style=f'fg:{Colors.FACTORIO_FG_HEX} bold'),
-                command_window
-            ], height=1, style=f'bg:{Colors.FACTORIO_BG_HEX}')
-        ]), focused_element=command_window)
+        self.layout = Layout(
+            HSplit(
+                [
+                    create_titlebar(client),
+                    Window(
+                        BufferControl(
+                            self.logs_buffer, focusable=False, input_processors=[FormatText()]
+                        ),
+                        wrap_lines=False,
+                        style="bg:#212121",
+                    ),
+                    VSplit(
+                        [
+                            Window(
+                                FtC(COMMAND_SYMBOL),
+                                width=len(COMMAND_SYMBOL) + 1,
+                                style=f"fg:{Colors.FACTORIO_FG_HEX} bold",
+                            ),
+                            command_window,
+                        ],
+                        height=1,
+                        style=f"bg:{Colors.FACTORIO_BG_HEX}",
+                    ),
+                ]
+            ),
+            focused_element=command_window,
+        )
 
         self.client.add_logs_listener(self.push_log)
 
     def push_log(self, *log: str) -> None:
         if not log or len(log) == 0:
             return
-        text = ' '.join(log)
+        text = " ".join(log)
         if self.logs_buffer.text:
-            self.logs_buffer.text += '\n' + text
+            self.logs_buffer.text += "\n" + text
         else:
             self.logs_buffer.text += text
-        self.logs_buffer.cursor_down(self.logs_buffer.document.line_count - self.logs_buffer.document.cursor_position_row)
+        self.logs_buffer.cursor_down(
+            self.logs_buffer.document.line_count - self.logs_buffer.document.cursor_position_row
+        )
 
     async def show(self) -> None:
         app_kb = KeyBindings()
@@ -89,12 +108,13 @@ class Shell:
         def __exit(_):
             self.app.exit()
 
-        self.app = Application(layout=self.layout,
-                               full_screen=True,
-                               color_depth=ColorDepth.DEPTH_24_BIT,
-                               refresh_interval=1,
-                               mouse_support=True,
-                               erase_when_done=True,
-                               key_bindings=app_kb
-                               )
+        self.app = Application(
+            layout=self.layout,
+            full_screen=True,
+            color_depth=ColorDepth.DEPTH_24_BIT,
+            refresh_interval=1,
+            mouse_support=True,
+            erase_when_done=True,
+            key_bindings=app_kb,
+        )
         await self.app.run_async()
