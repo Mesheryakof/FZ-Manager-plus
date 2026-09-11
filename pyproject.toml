@@ -14,9 +14,13 @@ rich = "^10.16.1"
 prompt-toolkit = "^3.0.24"
 questionary = "^1.10.0"
 aioconsole = "^0.3.3"
+pydantic = "^2.7"
+pydantic-settings = "^2.5"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
+ruff = "^0.6.9"
+isort = "^5.13.2"
 
 [tool.poetry.scripts]
 fzm = 'fz_manager.cli:main'
@@ -25,3 +29,19 @@ fz-manager = 'fz_manager.cli:main'
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.format]
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["fz_manager"]

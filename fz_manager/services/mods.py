@@ -1,13 +1,13 @@
 import json
 import os
-from os import path, walk
-from typing import Callable
 import zipfile
+from collections.abc import Callable
+from os import path, walk
 
 from fz_manager.api.client import FZClient
 from fz_manager.api.models import Mod
 
-MOD_SETTINGS_DAT = 'mod-settings.dat'
+MOD_SETTINGS_DAT = "mod-settings.dat"
 
 
 class ModsService:
@@ -19,19 +19,22 @@ class ModsService:
     @staticmethod
     def create_mod_settings_zip(mods_folder_path: str) -> str:
         mod_settings_dat_path = path.join(mods_folder_path, MOD_SETTINGS_DAT)
-        info_json_path = path.join(mods_folder_path, 'info.json')
+        info_json_path = path.join(mods_folder_path, "info.json")
         mod_settings_zip_path = path.join(mods_folder_path, "mod-settings.zip")
 
         if not path.exists(mod_settings_dat_path):
-            raise FileNotFoundError(f'Unable to find {MOD_SETTINGS_DAT}')
+            raise FileNotFoundError(f"Unable to find {MOD_SETTINGS_DAT}")
 
-        with open(info_json_path, 'w') as fp:
-            json.dump({
-                'name': MOD_SETTINGS_DAT,
-                'version': '0.1.0',
-                'title': MOD_SETTINGS_DAT,
-                'description': 'Mod settings for factorio.zone created with FZ-Manager tool by @michelsciortino'
-            }, fp)
+        with open(info_json_path, "w") as fp:
+            json.dump(
+                {
+                    "name": MOD_SETTINGS_DAT,
+                    "version": "0.1.0",
+                    "title": MOD_SETTINGS_DAT,
+                    "description": "Mod settings for factorio.zone created with FZ-Manager tool by @michelsciortino",
+                },
+                fp,
+            )
 
         zf = zipfile.ZipFile(mod_settings_zip_path, "w")
         zf.write(mod_settings_dat_path)
@@ -43,7 +46,7 @@ class ModsService:
     @staticmethod
     def list_zip_files(mods_folder_path: str) -> tuple[str, list[str]]:
         root, _, filenames = next(walk(mods_folder_path), (None, None, []))
-        return root, list(filter(lambda n: n.endswith('.zip'), filenames))
+        return root, list(filter(lambda n: n.endswith(".zip"), filenames))
 
     @staticmethod
     def build_mods(root: str, filenames: list[str]) -> list[Mod]:

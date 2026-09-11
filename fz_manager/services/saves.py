@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 from fz_manager.api.client import FZClient
 from fz_manager.api.models import Save
@@ -14,11 +14,11 @@ class SavesService:
         return list(self.client.saves.values().mapping.values())
 
     def used_slots(self) -> list[tuple[int, str]]:
-        return [(i + 1, v) for i, v in enumerate(self.slots()) if not v.endswith('(empty)')]
+        return [(i + 1, v) for i, v in enumerate(self.slots()) if not v.endswith("(empty)")]
 
     def is_slot_used(self, slot_index: int) -> bool:
-        slot_name = f'slot{slot_index}'
-        return self.client.saves[slot_name] != f'slot {slot_index} (empty)'
+        slot_name = f"slot{slot_index}"
+        return self.client.saves[slot_name] != f"slot {slot_index} (empty)"
 
     @staticmethod
     def build_save(name: str, file_path: str, size: int, slot_name: str) -> Save:
