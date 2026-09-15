@@ -6,6 +6,12 @@ This is an additive, standalone prototype living next to the existing
 logic for menu items yet - see the module docstring in the task description
 for scope.
 
+`FzManagerApp` below owns application-level concerns only: session wiring,
+top-level layout, and routing events between panes/modals. Each pane/modal
+is a self-contained component (own `compose()`/CSS/behavior) living in
+`fz_manager.tui.components`, mirroring a typical frontend `App` +
+`components/` split.
+
 Run it locally with:
 
     poetry run python -m fz_manager.tui.app
@@ -23,20 +29,22 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Input, ListItem, ListView, RichLog, Static
+from textual.widgets import Footer, Header, Input, ListView
 
 from fz_manager.config import Settings, get_settings
 from fz_manager.infrastructure.factorio_zone.client import FactorioZoneAPI
 from fz_manager.infrastructure.factorio_zone.session import FactorioZoneSession
 from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
 from fz_manager.terminal import Term
-from fz_manager.tui.components import ChoiceScreen, ConfirmScreen, TokenScreen
-
-STATIC_MENU_ITEMS = [
-    "Manage mods",
-    "Manage saves",
-    "Exit",
-]
+from fz_manager.tui.components import (
+    STATIC_MENU_ITEMS,
+    ChoiceScreen,
+    ConfirmScreen,
+    LogPane,
+    MenuPane,
+    StatusBar,
+    TokenScreen,
+)
 
 
 class FzManagerApp(App):
@@ -49,44 +57,13 @@ class FzManagerApp(App):
         layout: vertical;
     }
 
-    #bottom-bar {
-        dock: bottom;
-        height: 2;
-    }
-
-    #status-bar {
-        height: 1;
-        background: $panel;
-        color: $text;
-        padding: 0 1;
-    }
-
     #main-area {
         height: 1fr;
     }
 
-    #log-pane {
-        width: 3fr;
-        border: solid $primary;
-    }
-
-    #log-view {
-        height: 1fr;
-    }
-
-    #command-input {
-        height: 3;
-        border: none;
-        border-top: solid $primary;
-    }
-
-    #menu-pane {
-        width: 1fr;
-        border: solid $secondary;
-    }
-
-    #menu-pane > ListView {
-        height: 1fr;
+    #bottom-bar {
+        dock: bottom;
+        height: 2;
     }
     """
 
@@ -113,8 +90,8 @@ class FzManagerApp(App):
 
     @property
     def main_screen(self):
-        """The app's base screen, `#log-view`/`#main-menu`/`#status-bar`'s
-        home. `self.query_one(...)` resolves against `self.screen` -- the
+        """The app's base screen, `LogPane`/`MenuPane`/`StatusBar`'s home.
+        `self.query_one(...)` resolves against `self.screen` -- the
         currently ACTIVE one -- which is a modal (TokenScreen/ChoiceScreen/
         ConfirmScreen) whenever one is pushed. Background code (timers,
         the logs listener) runs regardless of which screen is active, so it
@@ -126,16 +103,10 @@ class FzManagerApp(App):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal(id="main-area"):
-            with Vertical(id="log-pane"):
-                yield RichLog(id="log-view", wrap=False, highlight=False, markup=False)
-                yield Input(placeholder="Type a message and press Enter...", id="command-input")
-            with Vertical(id="menu-pane"):
-                yield ListView(
-                    *[ListItem(Static(item), name=item) for item in self._menu_items()],
-                    id="main-menu",
-                )
+            yield LogPane(id="log-pane")
+            yield MenuPane(self._menu_items(), id="menu-pane")
         with Vertical(id="bottom-bar"):
-            yield Static("Trial: N/A", id="status-bar")
+            yield StatusBar("Trial: N/A", id="status-bar")
             yield Footer()
 
     def on_mount(self) -> None:
@@ -157,24 +128,14 @@ class FzManagerApp(App):
         self._start_connecting()
 
     def _start_connecting(self) -> None:
-        log_view = self.main_screen.query_one("#log-view", RichLog)
-        log_view.write(Text("Connecting to factorio.zone...", style="dim"))
+        self.main_screen.query_one(LogPane).log_view.write(Text("Connecting to factorio.zone...", style="dim"))
         self.connect_client()
 
     def _refresh_status_bar(self) -> None:
-        launch_id = self.session.launch_id
-        status_bar = self.main_screen.query_one("#status-bar", Static)
-        status_bar.update(f"Trial: N/A | Launch ID: {launch_id if launch_id is not None else '-'}")
+        self.main_screen.query_one(StatusBar).update_status(self.session.launch_id)
 
     def _refresh_menu(self) -> None:
-        menu = self.main_screen.query_one("#main-menu", ListView)
-        desired = self._menu_items()
-        current = [item.name for item in menu.children]
-        if current == desired:
-            return
-        menu.clear()
-        for item in desired:
-            menu.append(ListItem(Static(item), name=item))
+        self.main_screen.query_one(MenuPane).sync_items(self._menu_items())
 
     @work(exclusive=True, group="ws-connect")
     async def connect_client(self) -> None:
@@ -200,8 +161,7 @@ class FzManagerApp(App):
         if not log:
             return
         text = " ".join(log)
-        log_view = self.main_screen.query_one("#log-view", RichLog)
-        log_view.write(Text.from_ansi(text))
+        self.main_screen.query_one(LogPane).log_view.write(Text.from_ansi(text))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Enter in the command box. Just echoes into the log pane for now
@@ -229,8 +189,7 @@ class FzManagerApp(App):
         elif event.item.name == "Stop server":
             self.stop_server_flow()
         else:
-            log_view = self.main_screen.query_one("#log-view", RichLog)
-            log_view.write(
+            self.main_screen.query_one(LogPane).log_view.write(
                 Text(f"[menu] '{event.item.name}' is not implemented yet.", style="italic dim")
             )
 
