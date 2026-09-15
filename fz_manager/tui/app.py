@@ -24,6 +24,7 @@ or, for Textual's live dev console (in a second terminal run
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable
 from os import path
 
@@ -219,6 +220,8 @@ class FzManagerApp(App):
             self.stop_server_flow()
         elif event.item.name == "Manage mods":
             self.manage_mods_flow()
+        elif event.item.name == "Manage saves":
+            self.manage_saves_flow()
         else:
             self.main_screen.query_one(LogPane).log_view.write(
                 Text(f"[menu] '{event.item.name}' is not implemented yet.", style="italic dim")
@@ -466,6 +469,142 @@ class FzManagerApp(App):
         for mod_id in selected:
             self.push_log(Term.info("[manage mods]", f"Deleting mod {mod_id}"))
             await self.session.delete_mod(int(mod_id))
+
+    @work(exclusive=True, group="manage-saves")
+    async def manage_saves_flow(self) -> None:
+        """"Manage saves" submenu -- ported from the old
+        `Main.manage_saves_menu()` loop (upload / delete / download),
+        same structure as `manage_mods_flow` above."""
+        while True:
+            action = await self.push_screen_wait(
+                ChoiceScreen(
+                    "Manage saves:",
+                    [
+                        ("Upload save", "upload-save"),
+                        ("Delete save", "delete-save"),
+                        ("Download save", "download-save"),
+                        ("Back", "back"),
+                    ],
+                )
+            )
+            if action is None or action == "back":
+                return
+            if action == "upload-save":
+                await self._upload_save()
+            elif action == "delete-save":
+                await self._delete_save()
+            elif action == "download-save":
+                await self._download_save()
+
+    async def _upload_save(self) -> None:
+        file_path = await self.push_screen_wait(
+            PathScreen(
+                "Insert path to save file:",
+                default=self.storage.get("savesPath") or "",
+                validator=lambda p: path.exists(p) and path.splitext(p)[1] == ".zip",
+                error_message="Save file must be an existing .zip archive.",
+            )
+        )
+        if file_path is None:
+            return
+        self.storage.store("savesPath", file_path)
+
+        slot_choice = await self.push_screen_wait(
+            ChoiceScreen("Choose a save slot:", [(f"slot {i}", str(i)) for i in range(1, 10)])
+        )
+        if slot_choice is None:
+            return
+        slot_index = int(slot_choice)
+        slot_name = f"slot{slot_index}"
+
+        if self.session.is_save_slot_used(slot_index):
+            confirmed = await self.push_screen_wait(
+                ConfirmScreen(f"Slot {slot_index} is already used, do you want to replace it?")
+            )
+            if not confirmed:
+                return
+            await self.session.delete_save_slot(slot_name)
+
+        filename = path.basename(file_path)
+        size = path.getsize(file_path)
+        self.push_log(Term.info("[upload save]", f"Uploading {filename}..."))
+        try:
+            with open(file_path, "rb") as fh:
+                await self.session.upload_save(
+                    filename, fh, size, slot_name, self._progress_logger("[upload save]", size)
+                )
+            self.push_log(Term.info("[upload save]", "Done."))
+        except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+            self.push_log(Term.error("[upload save]", str(ex)))
+
+    async def _delete_save(self) -> None:
+        slots = self.session.used_save_slots()
+        if not slots:
+            self.push_log(Term.error("[delete save]", "All the slots are empty"))
+            return
+
+        options = [(description, str(index)) for index, description in slots]
+        selected = await self.push_screen_wait(
+            MultiChoiceScreen("Select slots to delete:", options, preselected=[])
+        )
+        if not selected:
+            return
+        confirmed = await self.push_screen_wait(ConfirmScreen(f"Delete {len(selected)} slot(s)?"))
+        if not confirmed:
+            return
+
+        for slot_index in selected:
+            self.push_log(Term.info("[delete save]", f"Deleting slot {slot_index}"))
+            try:
+                await self.session.delete_save_slot(f"slot{slot_index}")
+            except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+                self.push_log(Term.error("[delete save]", str(ex)))
+
+    async def _download_save(self) -> None:
+        slots = self.session.used_save_slots()
+        if not slots:
+            self.push_log(Term.error("[download save]", "All the slots are empty"))
+            return
+
+        options = [(description, str(index)) for index, description in slots]
+        selected = await self.push_screen_wait(
+            MultiChoiceScreen("Select slots to download:", options, preselected=[])
+        )
+        if not selected:
+            return
+
+        directory = await self.push_screen_wait(
+            PathScreen(
+                "Insert download directory path:",
+                default=self.storage.get("savesPath") or "",
+                validator=lambda p: path.isdir(p),
+                error_message="Not a directory.",
+            )
+        )
+        if directory is None:
+            return
+        self.storage.store("savesPath", directory)
+
+        descriptions = dict(slots)
+        for slot_index in selected:
+            slot_int = int(slot_index)
+            slot_name = f"slot{slot_int}"
+            description = descriptions.get(slot_int, "")
+            # Slot descriptions look like "slot 2 - 12.34MB" -- same size
+            # parsing the old `download_save_menu()` used to size the
+            # progress bar; here it just scales the 25/50/75/100% log steps.
+            size_match = re.search(r"(\d+\.\d+)MB", description)
+            expected_size = float(size_match[1]) * 1048576 if size_match else None
+
+            target = path.join(directory, f"slot{slot_int}.zip")
+            self.push_log(Term.info("[download save]", f"Downloading slot {slot_int}..."))
+            try:
+                await self.session.download_save_slot(
+                    slot_name, target, self._progress_logger(f"[download save] slot {slot_int}", expected_size)
+                )
+                self.push_log(Term.info("[download save]", f"Slot {slot_int}: done"))
+            except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+                self.push_log(Term.error("[download save]", str(ex)))
 
     async def action_quit(self) -> None:
         self.session.remove_logs_listener(self.push_log)
