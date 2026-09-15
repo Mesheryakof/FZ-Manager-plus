@@ -123,8 +123,8 @@ class FzManagerApp(App):
             self.session.launch_id, self.session.server_status, self.session.server_address
         )
 
-    def _refresh_menu(self) -> None:
-        self.main_screen.query_one(MenuPane).sync_items(self._menu_items())
+    async def _refresh_menu(self) -> None:
+        await self.main_screen.query_one(MenuPane).sync_items(self._menu_items())
 
     def _refresh_mods(self) -> None:
         self.main_screen.query_one(ModsPane).sync_mods(self.session.mods)

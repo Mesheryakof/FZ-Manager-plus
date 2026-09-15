@@ -56,8 +56,12 @@ class ModsPane(Vertical):
             return
         self._mods = list(mods)
         selection_list = self.selection_list
-        selection_list.clear_options()
-        selection_list.add_options(self._build_selections(mods))
+        # batch_update: Textual paints on its own thread, so without this a
+        # repaint can land between clear_options() and add_options() and
+        # read a transiently-too-short option list (OptionDoesNotExist).
+        with self.app.batch_update():
+            selection_list.clear_options()
+            selection_list.add_options(self._build_selections(mods))
 
     def on_selection_list_selection_toggled(self, event: SelectionList.SelectionToggled) -> None:
         event.stop()

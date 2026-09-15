@@ -23,13 +23,18 @@ class SelectableList(ListView):
     def _build_items(options: list[tuple[str, str]]) -> list[ListItem]:
         return [ListItem(Static(label), name=value) for label, value in options]
 
-    def sync_options(self, options: list[tuple[str, str]]) -> None:
+    async def sync_options(self, options: list[tuple[str, str]]) -> None:
         if options == self._options:
             return
         self._options = list(options)
-        self.clear()
-        for item in self._build_items(options):
-            self.append(item)
+        # clear()/extend() are both awaitable (ListView mounts/removes real
+        # child ListItem widgets, unlike SelectionList's plain data model)
+        # -- not awaiting clear() before extend() lets a repaint land with
+        # the old and new items both present. batch_update() additionally
+        # guards against Textual's separate paint thread reading mid-batch.
+        with self.app.batch_update():
+            await self.clear()
+            await self.extend(self._build_items(options))
 
     def index_of(self, value: str) -> int | None:
         for index, (_, option_value) in enumerate(self._options):

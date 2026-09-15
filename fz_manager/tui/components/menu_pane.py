@@ -29,5 +29,5 @@ class MenuPane(Vertical):
     def list_view(self) -> SelectableList:
         return self.query_one(SelectableList)
 
-    def sync_items(self, items: list[str]) -> None:
-        self.list_view.sync_options([(item, item) for item in items])
+    async def sync_items(self, items: list[str]) -> None:
+        await self.list_view.sync_options([(item, item) for item in items])
