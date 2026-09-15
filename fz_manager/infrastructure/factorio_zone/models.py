@@ -3,109 +3,94 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class LoginResponse(BaseModel):
+class FzBaseModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+
+class LoginResponse(FzBaseModel):
     user_token: str = Field(alias="userToken")
     referral_code: str | None = Field(default=None, alias="referralCode")
 
 
-class VisitMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class VisitMessage(FzBaseModel):
     type: Literal["visit"]
     secret: str
 
 
-class OptionsMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class OptionsMessage(FzBaseModel):
     type: Literal["options"]
     name: str
     options: Any
 
 
-class ModEntry(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
+class ModEntry(FzBaseModel):
+    model_config = ConfigDict(extra="allow")
 
     id: int
     text: str
     enabled: bool
 
 
-class ModsMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class ModsMessage(FzBaseModel):
     type: Literal["mods"]
     mods: list[ModEntry]
 
 
-class IdleMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class IdleMessage(FzBaseModel):
     type: Literal["idle"]
 
 
-class StartingMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class StartingMessage(FzBaseModel):
     type: Literal["starting"]
     launch_id: int | None = Field(default=None, alias="launchId")
 
 
-class StoppingMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class StoppingMessage(FzBaseModel):
     type: Literal["stopping"]
     launch_id: int | None = Field(default=None, alias="launchId")
 
 
-class RunningMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class RunningMessage(FzBaseModel):
     type: Literal["running"]
     launch_id: int | None = Field(default=None, alias="launchId")
     socket: str | None = None
 
 
-class SlotMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, extra="allow")
+class SlotMessage(FzBaseModel):
+    model_config = ConfigDict(extra="allow")
 
     type: Literal["slot"]
     slot: str
 
 
-class LogMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class LogMessage(FzBaseModel):
     type: Literal["log"]
     num: int
     line: str | None = None
     launch_id: int | None = Field(default=None, alias="launchId")
 
 
-class InfoMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class InfoMessage(FzBaseModel):
     type: Literal["info"]
     line: str | None = None
 
 
-class WarnMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class WarnMessage(FzBaseModel):
     type: Literal["warn"]
     line: str | None = None
 
 
-class ErrorMessage(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class ErrorMessage(FzBaseModel):
     type: Literal["error"]
     line: str | None = None
 
 
-class BlankMessage(BaseModel):
+class ConsoleMessage(FzBaseModel):
+    type: Literal["console"]
+    input: str | None = None
+
+
+class BlankMessage(FzBaseModel):
     model_config = ConfigDict(extra="allow")
 
     type: str
@@ -123,6 +108,7 @@ FzMessage = Annotated[
     | LogMessage
     | InfoMessage
     | WarnMessage
-    | ErrorMessage,
+    | ErrorMessage
+    | ConsoleMessage,
     Field(discriminator="type"),
 ]
