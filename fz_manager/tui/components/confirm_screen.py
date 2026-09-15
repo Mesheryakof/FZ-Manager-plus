@@ -1,5 +1,3 @@
-"""Yes/No confirmation modal."""
-
 from __future__ import annotations
 
 from textual.app import ComposeResult
@@ -9,9 +7,6 @@ from textual.widgets import Button, Static
 
 
 class ConfirmScreen(ModalScreen[bool]):
-    """Yes/No confirmation dialog -- ported from the old flow's implicit
-    confirmation-by-proceeding-through-menus into an explicit last step."""
-
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     CSS = """

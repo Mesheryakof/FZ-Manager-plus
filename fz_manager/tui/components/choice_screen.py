@@ -1,6 +1,3 @@
-"""Generic single-choice picker modal, reused for region/version/slot
-selection in the "Start server" flow."""
-
 from __future__ import annotations
 
 from textual.app import ComposeResult
@@ -10,19 +7,6 @@ from textual.widgets import ListItem, ListView, Static
 
 
 class ChoiceScreen(ModalScreen[str | None]):
-    """Generic single-choice picker: a titled list of options, dismisses
-    with the selected value, or `None` if cancelled (Escape).
-
-    Reused for region/version/slot selection in the "Start server" flow --
-    ported from the old `Main.choose_region`/`choose_factorio_version`/
-    `choose_slot` (questionary `SelectMenu` screens), just as one shared
-    Textual modal instead of three near-identical ones.
-
-    `default`, if given, pre-highlights the matching option (by value) on
-    mount -- same idea as `SelectMenu(default=...)` in the old UI, used to
-    restore the last-picked region/version/slot from `Storage`.
-    """
-
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     CSS = """

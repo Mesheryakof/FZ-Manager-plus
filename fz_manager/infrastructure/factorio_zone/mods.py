@@ -1,11 +1,3 @@
-"""Filesystem helpers for the "Manage mods" TUI flow.
-
-Pure, network-free helpers ported from the old
-`fz_manager.services.mods.ModsService`'s staticmethods -- uploading a mod
-file over the wire is `FactorioZoneSession.upload_mod()`'s job (see
-`session.py`); this module only deals with the local mods folder.
-"""
-
 from __future__ import annotations
 
 import json
@@ -25,9 +17,6 @@ class ModFile:
 
 
 def create_mod_settings_zip(mods_folder_path: str) -> str:
-    """Bundle `mod-settings.dat` into a zip mod, alongside a generated
-    `info.json` (removed again once zipped) -- same shape the old
-    `Main.create_mod_settings()` produced."""
     mod_settings_dat_path = path.join(mods_folder_path, MOD_SETTINGS_DAT)
     info_json_path = path.join(mods_folder_path, "info.json")
     mod_settings_zip_path = path.join(mods_folder_path, "mod-settings.zip")
@@ -58,7 +47,6 @@ def create_mod_settings_zip(mods_folder_path: str) -> str:
 
 
 def list_zip_files(mods_folder_path: str) -> tuple[str | None, list[str]]:
-    """Top-level `.zip` filenames directly inside `mods_folder_path`."""
     root, _, filenames = next(walk(mods_folder_path), (None, None, []))
     return root, sorted(f for f in filenames if f.endswith(".zip"))
 

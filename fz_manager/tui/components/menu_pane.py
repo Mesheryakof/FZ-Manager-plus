@@ -1,5 +1,3 @@
-"""Static action menu pane -- lists server/mod/save actions."""
-
 from __future__ import annotations
 
 from textual.app import ComposeResult
@@ -14,19 +12,6 @@ STATIC_MENU_ITEMS = [
 
 
 class MenuPane(Vertical):
-    """Wraps the `#main-menu` `ListView`.
-
-    Takes the *initial* item list in the constructor; `FzManagerApp` polls
-    session state and calls `sync_items(items)` to keep it in sync (e.g.
-    swapping "Start server" for "Stop server" once a launch id shows up).
-    `ListView.Selected` fired here bubbles up to the App unchanged, so
-    `on_list_view_selected` still lives on `FzManagerApp`.
-
-    Named `sync_items`, not `refresh`, because `refresh` is already
-    `Widget.refresh()` (repaint/layout) -- shadowing it with an incompatible
-    signature breaks Textual's own internals (e.g. `await_mount`).
-    """
-
     DEFAULT_CSS = """
     MenuPane {
         width: 1fr;

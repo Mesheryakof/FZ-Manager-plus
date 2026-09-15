@@ -1,5 +1,3 @@
-"""Modal asking for the factorio.zone user token before connecting."""
-
 from __future__ import annotations
 
 from textual.app import ComposeResult
@@ -9,17 +7,6 @@ from textual.widgets import Input, Static
 
 
 class TokenScreen(ModalScreen[str]):
-    """Modal asking for the factorio.zone user token before connecting.
-
-    Dismisses with the entered token (possibly empty -- factorio.zone issues
-    a fresh one on first visit if none is given, same as the old
-    `Main.choose_token()` flow).
-
-    `default`, if given, prefills the input -- used to restore the last
-    token from `Storage` (replaces the old `load_last_value`/`FileHistory`
-    "load last answer" trick, which was prompt_toolkit-specific).
-    """
-
     CSS = """
     TokenScreen {
         align: center middle;

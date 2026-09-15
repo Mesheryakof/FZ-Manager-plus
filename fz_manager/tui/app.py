@@ -1,26 +1,3 @@
-"""Prototype Textual-based dashboard TUI for FZ-Manager.
-
-This is an additive, standalone prototype living next to the existing
-`questionary`/`prompt_toolkit` UI in `fz_manager/ui/`. It is NOT wired to the
-`fzm`/`fz-manager` console entry points and does not implement full business
-logic for menu items yet - see the module docstring in the task description
-for scope.
-
-`FzManagerApp` below owns application-level concerns only: session wiring,
-top-level layout, and routing events between panes/modals. Each pane/modal
-is a self-contained component (own `compose()`/CSS/behavior) living in
-`fz_manager.tui.components`, mirroring a typical frontend `App` +
-`components/` split.
-
-Run it locally with:
-
-    poetry run python -m fz_manager.tui.app
-
-or, for Textual's live dev console (in a second terminal run
-`poetry run textual console`, then in this one `poetry run textual run
---dev fz_manager.tui.app:FzManagerApp`).
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -55,8 +32,6 @@ from fz_manager.tui.components import (
 
 
 class FzManagerApp(App):
-    """Skeleton multi-pane dashboard: status bar + live log stream + menu."""
-
     TITLE = "Factorio Zone Manager"
 
     CSS = """
@@ -80,21 +55,10 @@ class FzManagerApp(App):
 
     def __init__(self, settings: Settings | None = None) -> None:
         super().__init__()
-        # Falls back to a non-CLI-parsing Settings() by default -- safe for
-        # tests/programmatic construction (see fz_manager.config.get_settings
-        # for why). `main()` below passes a real `get_settings()` in, which
-        # DOES parse `--user-token ...`/`FZM_USER_TOKEN`/`.env`, since that
-        # call happens from the actual entry point where `sys.argv` is
-        # legitimately what the user ran.
         self.settings = settings or Settings(_cli_parse_args=False)
         api = FactorioZoneAPI(self.settings)
         socket = FactorioZoneSocket(self.settings)
         self.session = FactorioZoneSession(api, socket)
-        # Same on-disk JSON store + prompt_toolkit FileHistory files the old
-        # UI used (fz_manager/storage.py, untouched) -- just consumed
-        # differently here: single last-value get()/store() instead of
-        # cycling through FileHistory with Up/Down, since Textual's Input
-        # doesn't have prompt_toolkit's buffer history built in.
         self.storage = Storage()
 
     def _menu_items(self) -> list[str]:
@@ -103,14 +67,6 @@ class FzManagerApp(App):
 
     @property
     def main_screen(self):
-        """The app's base screen, `LogPane`/`MenuPane`/`StatusBar`'s home.
-        `self.query_one(...)` resolves against `self.screen` -- the
-        currently ACTIVE one -- which is a modal (TokenScreen/ChoiceScreen/
-        ConfirmScreen) whenever one is pushed. Background code (timers,
-        the logs listener) runs regardless of which screen is active, so it
-        must query this instead of `self`/`self.screen` to avoid a
-        `NoMatches` crash the moment a modal is up when it fires.
-        """
         return self.screen_stack[0]
 
     def compose(self) -> ComposeResult:
@@ -124,20 +80,10 @@ class FzManagerApp(App):
 
     def on_mount(self) -> None:
         self.session.add_logs_listener(self.push_log)
-        # `session.launch_id` isn't itself reactive (session.py has no
-        # state-change-notification mechanism, only logs), so poll it --
-        # same pattern as session.wait_sync()'s own polling.
         self.set_interval(1, self._refresh_status_bar)
         self.set_interval(1, self._refresh_menu)
-        # Without this, Textual auto-focuses the first focusable widget in
-        # DOM order on mount -- now that #log-view opts out of focus (see
-        # LogPane), that would be #command-input. The menu is the more
-        # useful default: it's how you act on the dashboard, and typing a
-        # command only matters once a server is actually running.
         self.main_screen.query_one(MenuPane).list_view.focus()
         if self.settings.user_token:
-            # Token already supplied programmatically (e.g. tests) -- skip
-            # the prompt and connect right away.
             self._start_connecting()
         else:
             self.push_screen(
@@ -162,40 +108,19 @@ class FzManagerApp(App):
 
     @work(exclusive=True, group="ws-connect")
     async def connect_client(self) -> None:
-        """Background worker: opens the real WebSocket connection and
-        streams logs in for the lifetime of the session.
-
-        Runs on the app's own asyncio event loop (Textual workers share it),
-        so `push_log` below can safely touch the widget tree directly.
-        """
         try:
             await self.session.connect()
             await self.session.run()
-        except Exception as ex:  # noqa: BLE001 - never let a WS error crash the TUI
+        except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[connection error]", str(ex)))
 
     def push_log(self, *log: str) -> None:
-        """Logs listener callback wired to `FactorioZoneSession.add_logs_listener`.
-
-        `log` lines arrive pre-formatted with ANSI color codes (see
-        `fz_manager.terminal.Term`), so we hand them to Rich's ANSI decoder
-        via the custom `RichLog` widget rather than writing raw text.
-        """
         if not log:
             return
         text = " ".join(log)
         self.main_screen.query_one(LogPane).log_view.write(Text.from_ansi(text))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Enter in the command box: sends the command to the attached,
-        running server -- the new TUI's equivalent of the old `Shell`
-        ("Attach to server") screen, folded into the always-visible command
-        box instead of a separate full-screen mode, since the widgets are
-        already on screen either way.
-
-        Guarded by id in case some other Input (e.g. TokenScreen's, which
-        also calls `event.stop()` itself) ever ends up bubbling here.
-        """
         if event.input.id != "command-input":
             return
         text = event.value.strip()
@@ -212,7 +137,7 @@ class FzManagerApp(App):
     async def send_command(self, command: str) -> None:
         try:
             await self.session.send_command(command)
-        except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+        except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[command]", str(ex)))
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -235,15 +160,6 @@ class FzManagerApp(App):
 
     @work(exclusive=True, group="start-server")
     async def start_server_flow(self) -> None:
-        """Region -> version -> save slot -> confirm -> start.
-
-        Ported from the old `Main.start_server()` (see
-        `fz_manager/ui/app.py`) and `InstanceService.start()`: same steps,
-        same data sources (`session.regions`/`versions`/`saves`), same
-        `f"slot{n}"` naming and running/server_address poll loop -- just
-        driven by `ChoiceScreen`/`ConfirmScreen` modals instead of
-        questionary `SelectMenu` prompts.
-        """
         regions = sorted(self.session.regions.items())
         if not regions:
             self.push_log(Term.error("[start server]", "No regions available yet (still syncing?)"))
@@ -308,32 +224,21 @@ class FzManagerApp(App):
                 Term.info("[start server]", f"Server running at {self.session.server_address}")
             )
             self.storage.persist()
-        except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+        except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[start server]", str(ex)))
 
     @work(exclusive=True, group="stop-server")
     async def stop_server_flow(self) -> None:
-        """Ported from the old `InstanceService.stop()`: call the API, then
-        poll until the WS confirms the instance is no longer running."""
         self.push_log(Term.info("[stop server]", "Stopping instance..."))
         try:
             await self.session.stop_instance()
             while self.session.running:
                 await asyncio.sleep(1)
             self.push_log(Term.info("[stop server]", "Instance stopped."))
-        except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+        except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[stop server]", str(ex)))
 
     def _progress_logger(self, label: str, total: float | None) -> Callable[[int], None]:
-        """Builds a throttled upload/download progress callback: logs at
-        25/50/75/100% instead of once per chunk read (`UploadProgressFile`/
-        `download_save_slot` call back far more often than that).
-
-        Replaces the old `rich.progress.Progress` bars -- those print
-        straight to the terminal, which fights Textual for control of the
-        screen buffer and can't be used from inside a running Textual app;
-        log lines through the existing `push_log`/`RichLog` pipe instead.
-        """
         reported: set[int] = set()
 
         def on_progress(bytes_done: int) -> None:
@@ -348,10 +253,6 @@ class FzManagerApp(App):
 
     @work(exclusive=True, group="manage-mods")
     async def manage_mods_flow(self) -> None:
-        """"Manage mods" submenu -- ported from the old `Main.manage_mods_menu()`
-        loop (create mod-settings.zip / upload / enable-disable / delete),
-        just driven by `ChoiceScreen` instead of a nested questionary
-        `ActionMenu`."""
         while True:
             action = await self.push_screen_wait(
                 ChoiceScreen(
@@ -433,7 +334,7 @@ class FzManagerApp(App):
                         self._progress_logger(f"[upload mods] {mod_file.name}", mod_file.size),
                     )
                 self.push_log(Term.info("[upload mods]", f"{mod_file.name}: done"))
-            except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+            except Exception as ex:  # noqa: BLE001
                 self.push_log(Term.error("[upload mods]", f"{mod_file.name}: {ex}"))
 
     async def _toggle_mods(self) -> None:
@@ -478,9 +379,6 @@ class FzManagerApp(App):
 
     @work(exclusive=True, group="manage-saves")
     async def manage_saves_flow(self) -> None:
-        """"Manage saves" submenu -- ported from the old
-        `Main.manage_saves_menu()` loop (upload / delete / download),
-        same structure as `manage_mods_flow` above."""
         while True:
             action = await self.push_screen_wait(
                 ChoiceScreen(
@@ -540,7 +438,7 @@ class FzManagerApp(App):
                     filename, fh, size, slot_name, self._progress_logger("[upload save]", size)
                 )
             self.push_log(Term.info("[upload save]", "Done."))
-        except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+        except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[upload save]", str(ex)))
 
     async def _delete_save(self) -> None:
@@ -563,7 +461,7 @@ class FzManagerApp(App):
             self.push_log(Term.info("[delete save]", f"Deleting slot {slot_index}"))
             try:
                 await self.session.delete_save_slot(f"slot{slot_index}")
-            except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+            except Exception as ex:  # noqa: BLE001
                 self.push_log(Term.error("[delete save]", str(ex)))
 
     async def _download_save(self) -> None:
@@ -596,9 +494,6 @@ class FzManagerApp(App):
             slot_int = int(slot_index)
             slot_name = f"slot{slot_int}"
             description = descriptions.get(slot_int, "")
-            # Slot descriptions look like "slot 2 - 12.34MB" -- same size
-            # parsing the old `download_save_menu()` used to size the
-            # progress bar; here it just scales the 25/50/75/100% log steps.
             size_match = re.search(r"(\d+\.\d+)MB", description)
             expected_size = float(size_match[1]) * 1048576 if size_match else None
 
@@ -609,24 +504,18 @@ class FzManagerApp(App):
                     slot_name, target, self._progress_logger(f"[download save] slot {slot_int}", expected_size)
                 )
                 self.push_log(Term.info("[download save]", f"Slot {slot_int}: done"))
-            except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+            except Exception as ex:  # noqa: BLE001
                 self.push_log(Term.error("[download save]", str(ex)))
 
     async def action_quit(self) -> None:
         self.session.remove_logs_listener(self.push_log)
         if self.session.user_token:
-            # `session.user_token` is only set once the WS `visit` handler's
-            # login round-trip completes (see session.py), so it may still
-            # be unset on a very early quit -- nothing to persist then.
             self.storage.store("userToken", self.session.user_token)
         self.storage.persist()
         self.exit()
 
 
 def main() -> None:
-    # Real entry point: sys.argv here is genuinely what the user typed to
-    # launch this program, so parsing it (via get_settings()) is safe --
-    # unlike everywhere else in this prototype, which avoids it.
     FzManagerApp(settings=get_settings()).run()
 
 

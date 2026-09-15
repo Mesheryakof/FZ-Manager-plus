@@ -1,12 +1,3 @@
-"""Declarative REST client for the Factorio Zone API.
-
-Independent prototype: does not import from / integrate with
-`fz_manager.api.client.FZClient`. Endpoints mirror the ones implemented
-there (same URLs, same form fields, same size limits) but read
-`visitSecret`/`userToken` from `self` and expose pythonic snake_case
-parameters that map onto the camelCase form fields.
-"""
-
 from collections.abc import Callable
 
 import httpx
@@ -118,13 +109,6 @@ class FactorioZoneAPI:
         file_path: str,
         progress: Callable[[int], None] | None = None,
     ) -> None:
-        """Stream a save file to `file_path`.
-
-        Not implemented via `@router.endpoint(...)`: the decorator assumes a JSON
-        response body, while this endpoint streams a file. This is a
-        deliberate gap in its coverage, not a bug -- streaming responses are
-        handled by hand here instead, via `router.send(...)`.
-        """
         request = router.build_request(
             method="POST",
             path="/api/save/download",

@@ -1,7 +1,3 @@
-"""Generic multi-choice picker modal (checkbox list + Confirm/Cancel),
-reused for the "Manage mods"/"Manage saves" flows (upload subset, delete
-subset, enable/disable subset, download subset)."""
-
 from __future__ import annotations
 
 from textual.app import ComposeResult
@@ -12,15 +8,6 @@ from textual.widgets.selection_list import Selection
 
 
 class MultiChoiceScreen(ModalScreen[list[str] | None]):
-    """A titled checkbox list, dismisses with the list of selected values,
-    or `None` if cancelled (Escape/Cancel button).
-
-    Ported from the old `CheckboxMenu` (questionary `checkbox` prompts) --
-    `SelectionList` already binds Enter to toggle the highlighted item, so
-    confirming uses a dedicated button instead of also binding Enter at the
-    screen level (that would fight the widget for the same key).
-    """
-
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     CSS = """

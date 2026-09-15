@@ -10,9 +10,6 @@ from fz_manager.utils.api_router.ws import WebSocketClient
 
 
 def _to_blank_message(raw: bytes, error: ValidationError) -> BlankMessage:  # noqa: ARG001
-    """`on_decode_error` hook: turns a frame that failed to validate against
-    `FzMessage` into a `BlankMessage` instead of letting the error kill the
-    message loop -- see `BlankMessage`'s docstring."""
     try:
         data = json.loads(raw)
         if not isinstance(data, dict):

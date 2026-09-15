@@ -1,14 +1,3 @@
-"""Session: owns Factorio Zone connection state synced from the WS message
-stream, and wires REST (`FactorioZoneAPI`) + WS (`FactorioZoneSocket`)
-together.
-
-State fields and message-handling logic are ported from
-`fz_manager.api.client.FZClient` -- specifically its `connect()` method's
-`match data['type']` block, which this replaces with typed handlers
-registered via `@FactorioZoneSocket.on(...)`. See that module for the
-original, dict-based version.
-"""
-
 import asyncio
 import re
 from collections.abc import Callable, Coroutine
@@ -45,18 +34,10 @@ class ServerStatus:
 
 
 class FactorioZoneSession:
-    """Owns synced connection state and drives the WS message loop.
-
-    Composes `api` (REST) and `socket` (WS) -- both plain fields, no
-    inheritance from either. See the module docstrings of
-    `infrastructure/factorio_zone/client.py` / `socket.py` for why.
-    """
-
     def __init__(self, api: FactorioZoneAPI, socket: FactorioZoneSocket):
         self.api = api
         self.socket = socket
 
-        # -- Synced state, ported 1:1 from FZClient's attributes --
         self.user_token: str | None = None
         self.referrer_code: str | None = None
         self.regions: dict = {}
@@ -75,24 +56,15 @@ class FactorioZoneSession:
         self._log_listeners: list[LogListener] = []
 
     async def connect(self) -> None:
-        """Opens the WS connection. Returns once connected -- does not
-        process messages (see `run()`)."""
         await self.socket.connect()
 
     async def run(self) -> None:
-        """Consumes the WS message stream forever, dispatching each message
-        to the handlers registered below via `@FactorioZoneSocket.on(...)`.
-        """
         await self.socket.listen(self)
 
     async def start_instance(self, region: str, version: str, save: str) -> None:
         await self.api.start_instance(region, version, save)
 
     async def stop_instance(self) -> None:
-        """`launch_id` lives only on the session (set by the `starting`/
-        `stopping`/`running`/`log` WS handlers below) -- `FactorioZoneAPI`
-        doesn't track it itself, so it's passed in explicitly here rather
-        than the REST layer reading it off its own state."""
         await self.api.stop_instance(self.launch_id)
 
     async def wait_sync(self) -> None:
@@ -101,11 +73,6 @@ class FactorioZoneSession:
 
     async def send_command(self, command: str) -> None:
         await self.api.send_command(self.launch_id, command)
-
-    # -- Mods, ported from the old `fz_manager.services.mods.ModsService` --
-    # (its two network methods only; the filesystem-only staticmethods live
-    # in `fz_manager.infrastructure.factorio_zone.mods` instead, since they
-    # don't touch session/API state at all.)
 
     async def upload_mod(
         self, name: str, file, size: int, progress: Callable[[int], None] | None = None
@@ -118,15 +85,7 @@ class FactorioZoneSession:
     async def delete_mod(self, mod_id: int) -> None:
         await self.api.delete_mod(mod_id)
 
-    # -- Saves, ported from the old `fz_manager.services.saves.SavesService` --
-
     def used_save_slots(self) -> list[tuple[int, str]]:
-        """(1-based slot index, description) pairs for slots that aren't
-        empty. Ported from the old `SavesService.used_slots()`, but checking
-        `.endswith("(empty)")` (like `is_save_slot_used()` below) instead of
-        assuming slot order matches enumeration order 1:1 -- the old
-        `slots()`/`used_slots()` pair only worked because both walked the
-        same `dict.values()`, which this collapses into one method."""
         return [
             (i + 1, description)
             for i, description in enumerate(self.saves.values())
@@ -162,14 +121,6 @@ class FactorioZoneSession:
                 await listener(line)
             else:
                 listener(line)
-
-
-# ---------------------------------------------------------------------------
-# WS message handlers -- one per case of the old FZClient.connect()'s
-# `match data['type']`. Plain functions, not methods: registering them
-# doesn't need a FactorioZoneSession instance to exist yet (see
-# utils/api_router/ws.py's module docstring for why).
-# ---------------------------------------------------------------------------
 
 
 @FactorioZoneSocket.on(VisitMessage)
@@ -235,8 +186,6 @@ async def _handle_slot(session: FactorioZoneSession, message: SlotMessage) -> No
 
 @FactorioZoneSocket.on(LogMessage)
 async def _handle_log(session: FactorioZoneSession, message: LogMessage) -> None:
-    # Same de-dup as the old client: the server can resend a log line by
-    # number, only emit it to listeners once.
     if message.num in session._logs_map:
         return
     session._logs_map[message.num] = message.num
@@ -267,7 +216,4 @@ async def _handle_error(session: FactorioZoneSession, message: ErrorMessage) -> 
 
 @FactorioZoneSocket.on(BlankMessage)
 async def _handle_blank(session: FactorioZoneSession, message: BlankMessage) -> None:
-    # An unrecognized `type` (see BlankMessage's docstring) -- log it
-    # instead of silently dropping it, so a new/changed server event is
-    # visible rather than invisible.
     await session._emit_log(Term.warn("warn", f"Unrecognized WS message: {message.model_dump()}"))

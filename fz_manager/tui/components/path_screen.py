@@ -1,5 +1,3 @@
-"""Free-text path input modal, with inline validation on submit."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -11,15 +9,6 @@ from textual.widgets import Input, Static
 
 
 class PathScreen(ModalScreen[str | None]):
-    """Single path/text input, ported from the old `PathMenu` (questionary
-    `path`/`text` prompts) -- validates on submit instead of keystroke by
-    keystroke, and re-prompts in place (shows an inline error, keeps the
-    modal open) on failure rather than closing.
-
-    Dismisses with the entered (and validated) value, or `None` if
-    cancelled (Escape).
-    """
-
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     CSS = """

@@ -1,17 +1,6 @@
-"""Pydantic models for the Factorio Zone REST responses and WS messages.
-
-The WS message shapes are derived from `fz_manager/api/client.py`'s
-`FZClient.connect()` (the `match data['type']` block), which is the source
-of truth for the real payloads sent by the server.
-"""
-
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
-# ---------------------------------------------------------------------------
-# REST responses
-# ---------------------------------------------------------------------------
 
 
 class LoginResponse(BaseModel):
@@ -19,11 +8,6 @@ class LoginResponse(BaseModel):
 
     user_token: str = Field(alias="userToken")
     referral_code: str | None = Field(default=None, alias="referralCode")
-
-
-# ---------------------------------------------------------------------------
-# WS messages
-# ---------------------------------------------------------------------------
 
 
 class VisitMessage(BaseModel):
@@ -114,22 +98,6 @@ class ErrorMessage(BaseModel):
 
 
 class BlankMessage(BaseModel):
-    """Fallback for a WS frame that failed to validate against any of the
-    models above -- an unrecognized `type`, or a known `type` whose payload
-    changed shape in some way we haven't modeled (e.g. a field showing up
-    with an unexpected JSON type).
-
-    Not a member of `FzMessage` -- pydantic's discriminated unions have no
-    built-in "anything else" case, every tag must be declared up front, or
-    validation raises. Instead, `FactorioZoneSocket` catches that
-    `ValidationError` and constructs this directly from the raw frame (see
-    its `on_decode_error` hook), so `FactorioZoneSession.run()`'s message
-    loop never crashes on a message shape we simply haven't modeled yet --
-    it just falls through to `@FactorioZoneSocket.on(BlankMessage)`.
-    `extra="allow"` keeps whatever fields came in instead of discarding
-    them, so they're still visible (e.g. in logs) for debugging.
-    """
-
     model_config = ConfigDict(extra="allow")
 
     type: str

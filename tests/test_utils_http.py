@@ -24,11 +24,6 @@ def make_toy_client(transport: httpx.MockTransport):
     return ToyApiClient()
 
 
-# NOTE: pytest has no built-in async test support and pytest-asyncio isn't
-# a project dependency, so these tests drive the event loop manually via
-# `asyncio.run` rather than relying on a pytest plugin.
-
-
 def test_endpoint_parses_successful_response_into_model():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"name": "gizmo", "count": 3})
