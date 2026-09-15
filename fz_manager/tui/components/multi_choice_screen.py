@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
@@ -56,7 +57,14 @@ class MultiChoiceScreen(ModalScreen[list[str] | None]):
             yield Static(self._title)
             yield SelectionList(
                 *[
-                    Selection(label, value, value in self._preselected)
+                    # no_wrap+ellipsis: see ModsPane._build_selections for why
+                    # -- SelectionList crashes on any option whose label wraps
+                    # onto a second row, and options here can be mod names.
+                    Selection(
+                        Text(label, no_wrap=True, overflow="ellipsis"),
+                        value,
+                        value in self._preselected,
+                    )
                     for label, value in self._options
                 ]
             )

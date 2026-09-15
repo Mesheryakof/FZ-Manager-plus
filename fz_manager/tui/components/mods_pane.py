@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.message import Message
@@ -42,7 +43,16 @@ class ModsPane(Vertical):
 
     @staticmethod
     def _build_selections(mods: list[ModEntry]) -> list[Selection]:
-        return [Selection(mod.text, mod.id, mod.enabled) for mod in mods]
+        # no_wrap+ellipsis: SelectionList.render_line() maps a rendered row
+        # to an option via `scroll_y + y`, assuming exactly one row per
+        # option -- a mod name long enough to wrap onto a second row breaks
+        # that math and crashes with OptionDoesNotExist (a Textual bug, not
+        # a sync-timing issue -- confirmed by reproducing it with a single
+        # long-named option and no mutation involved at all).
+        return [
+            Selection(Text(mod.text, no_wrap=True, overflow="ellipsis"), mod.id, mod.enabled)
+            for mod in mods
+        ]
 
     def compose(self) -> ComposeResult:
         yield SelectionList(*self._build_selections(self._mods))
