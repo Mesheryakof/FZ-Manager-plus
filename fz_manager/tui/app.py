@@ -16,7 +16,6 @@ from fz_manager.infrastructure.factorio_zone import mods
 from fz_manager.infrastructure.factorio_zone.client import FactorioZoneAPI
 from fz_manager.infrastructure.factorio_zone.session import FactorioZoneSession
 from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
-from fz_manager.storage import Storage
 from fz_manager.terminal import Term
 from fz_manager.tui.components import (
     STATIC_MENU_ITEMS,
@@ -59,7 +58,6 @@ class FzManagerApp(App):
         api = FactorioZoneAPI(self.settings)
         socket = FactorioZoneSocket(self.settings)
         self.session = FactorioZoneSession(api, socket)
-        self.storage = Storage()
 
     def _menu_items(self) -> list[str]:
         instance_item = "Stop server" if self.session.launch_id is not None else "Start server"
@@ -87,7 +85,7 @@ class FzManagerApp(App):
             self._start_connecting()
         else:
             self.push_screen(
-                TokenScreen(default=self.storage.get("userToken") or ""), self._on_token_submitted
+                TokenScreen(default=self.settings.user_token or ""), self._on_token_submitted
             )
 
     def _on_token_submitted(self, token: str) -> None:
@@ -168,12 +166,12 @@ class FzManagerApp(App):
             ChoiceScreen(
                 "Choose a region:",
                 [(f"{code} - {name}", code) for code, name in regions],
-                default=self.storage.get("region"),
+                default=self.settings.region,
             )
         )
         if region is None:
             return
-        self.storage.store("region", region)
+        self.settings.region = region
 
         versions = list(self.session.versions)
         if not versions:
@@ -185,12 +183,12 @@ class FzManagerApp(App):
             ChoiceScreen(
                 "Choose a Factorio version:",
                 [(v, v) for v in versions],
-                default=self.storage.get("version"),
+                default=self.settings.version,
             )
         )
         if version is None:
             return
-        self.storage.store("version", version)
+        self.settings.version = version
 
         slots = list(self.session.saves.values())
         if not slots:
@@ -202,12 +200,12 @@ class FzManagerApp(App):
             ChoiceScreen(
                 "Choose a save slot:",
                 [(desc, str(i + 1)) for i, desc in enumerate(slots)],
-                default=self.storage.get("slot"),
+                default=self.settings.slot,
             )
         )
         if slot is None:
             return
-        self.storage.store("slot", slot)
+        self.settings.slot = slot
 
         confirmed = await self.push_screen_wait(
             ConfirmScreen(f"Start server in '{region}', version {version}, slot {slot}?")
@@ -223,7 +221,7 @@ class FzManagerApp(App):
             self.push_log(
                 Term.info("[start server]", f"Server running at {self.session.server_address}")
             )
-            self.storage.persist()
+            self.settings.persist()
         except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[start server]", str(ex)))
 
@@ -281,14 +279,14 @@ class FzManagerApp(App):
         mods_folder = await self.push_screen_wait(
             PathScreen(
                 "Insert path to mods folder:",
-                default=self.storage.get("modsPath") or "",
+                default=self.settings.mods_path or "",
                 validator=lambda p: path.isdir(p),
                 error_message="Not a directory.",
             )
         )
         if mods_folder is None:
             return
-        self.storage.store("modsPath", mods_folder)
+        self.settings.mods_path = mods_folder
 
         try:
             mod_settings_zip_path = mods.create_mod_settings_zip(mods_folder)
@@ -301,14 +299,14 @@ class FzManagerApp(App):
         mods_folder = await self.push_screen_wait(
             PathScreen(
                 "Insert path to mods folder:",
-                default=self.storage.get("modsPath") or "",
+                default=self.settings.mods_path or "",
                 validator=lambda p: path.exists(p),
                 error_message="Path does not exist.",
             )
         )
         if mods_folder is None:
             return
-        self.storage.store("modsPath", mods_folder)
+        self.settings.mods_path = mods_folder
 
         root, zip_names = mods.list_zip_files(mods_folder)
         if not zip_names:
@@ -404,14 +402,14 @@ class FzManagerApp(App):
         file_path = await self.push_screen_wait(
             PathScreen(
                 "Insert path to save file:",
-                default=self.storage.get("savesPath") or "",
+                default=self.settings.saves_path or "",
                 validator=lambda p: path.exists(p) and path.splitext(p)[1] == ".zip",
                 error_message="Save file must be an existing .zip archive.",
             )
         )
         if file_path is None:
             return
-        self.storage.store("savesPath", file_path)
+        self.settings.saves_path = file_path
 
         slot_choice = await self.push_screen_wait(
             ChoiceScreen("Choose a save slot:", [(f"slot {i}", str(i)) for i in range(1, 10)])
@@ -480,14 +478,14 @@ class FzManagerApp(App):
         directory = await self.push_screen_wait(
             PathScreen(
                 "Insert download directory path:",
-                default=self.storage.get("savesPath") or "",
+                default=self.settings.saves_path or "",
                 validator=lambda p: path.isdir(p),
                 error_message="Not a directory.",
             )
         )
         if directory is None:
             return
-        self.storage.store("savesPath", directory)
+        self.settings.saves_path = directory
 
         descriptions = dict(slots)
         for slot_index in selected:
@@ -510,8 +508,8 @@ class FzManagerApp(App):
     async def action_quit(self) -> None:
         self.session.remove_logs_listener(self.push_log)
         if self.session.user_token:
-            self.storage.store("userToken", self.session.user_token)
-        self.storage.persist()
+            self.settings.user_token = self.session.user_token
+        self.settings.persist()
         self.exit()
 
 

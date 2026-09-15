@@ -1,17 +1,18 @@
-"""Shared application configuration.
-
-A single place to collect settings for the whole `fz_manager` package (not
-just the Factorio Zone prototype) as more of them show up. Values are
-resolved from (highest priority first): CLI flags (`--...`), environment
-variables (`FZM_...`), a `.env` file, then the defaults below -- CLI flags
-always win, matching how `pydantic-settings` orders its default sources when
-`cli_parse_args=True`.
-"""
-
+import json
 from functools import lru_cache
 from pathlib import Path
+from tempfile import gettempdir
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    JsonConfigSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+_STORE_PATH = Path(gettempdir()) / ".fzm" / "settings.json"
+
+_PERSISTED_FIELDS = ("user_token", "region", "version", "slot", "mods_path", "saves_path")
 
 
 class Settings(BaseSettings):
@@ -22,6 +23,11 @@ class Settings(BaseSettings):
     ws_ping_timeout: float = 10
     storage_dir: Path | None = None
     user_token: str | None = None
+    region: str | None = None
+    version: str | None = None
+    slot: str | None = None
+    mods_path: str | None = None
+    saves_path: str | None = None
 
     model_config = SettingsConfigDict(
         env_prefix="FZM_",
@@ -31,21 +37,29 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            JsonConfigSettingsSource(settings_cls, json_file=_STORE_PATH),
+            file_secret_settings,
+        )
+
+    def persist(self) -> None:
+        _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        data = {field: getattr(self, field) for field in _PERSISTED_FIELDS}
+        _STORE_PATH.write_text(json.dumps(data))
+
 
 @lru_cache
 def get_settings() -> Settings:
-    """Shared, process-wide `Settings` instance.
-
-    Lazy: `Settings()` (and its `sys.argv` CLI parsing) only runs on the
-    first actual call to `get_settings()`, not on import of this module --
-    importing `fz_manager.config` anywhere (tests included) is always safe.
-    Cached: every later call returns the same instance instead of
-    re-parsing.
-
-    Whichever code calls this *first* in the process is what `sys.argv`
-    gets parsed against. That's fine from the real CLI entry point, but
-    tests or embedding contexts with unrelated argv (e.g. pytest's own
-    flags) should construct and pass their own `Settings(_cli_parse_args=False)`
-    explicitly instead of relying on this default.
-    """
     return Settings()
