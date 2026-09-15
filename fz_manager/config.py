@@ -1,4 +1,3 @@
-import json
 from functools import lru_cache
 from pathlib import Path
 from tempfile import gettempdir
@@ -11,8 +10,6 @@ from pydantic_settings import (
 )
 
 _STORE_PATH = Path(gettempdir()) / ".fzm" / "settings.json"
-
-_PERSISTED_FIELDS = ("user_token", "region", "version", "slot", "mods_path", "saves_path")
 
 
 class Settings(BaseSettings):
@@ -56,8 +53,7 @@ class Settings(BaseSettings):
 
     def persist(self) -> None:
         _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        data = {field: getattr(self, field) for field in _PERSISTED_FIELDS}
-        _STORE_PATH.write_text(json.dumps(data))
+        _STORE_PATH.write_text(self.model_dump_json())
 
 
 @lru_cache
