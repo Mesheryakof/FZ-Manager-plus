@@ -227,7 +227,6 @@ class FzManagerApp(App):
             self.push_log(
                 Term.info("[start server]", f"Server running at {self.session.server_address}")
             )
-            self.settings.persist()
         except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[start server]", str(ex)))
 
@@ -515,7 +514,6 @@ class FzManagerApp(App):
         self.session.remove_logs_listener(self.push_log)
         if self.session.user_token:
             self.settings.user_token = self.session.user_token
-        self.settings.persist()
         self.exit()
 
 

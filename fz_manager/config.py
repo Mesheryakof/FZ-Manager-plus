@@ -51,7 +51,11 @@ class Settings(BaseSettings):
             file_secret_settings,
         )
 
-    def persist(self) -> None:
+    def __setattr__(self, name: str, value: object) -> None:
+        super().__setattr__(name, value)
+        self._persist()
+
+    def _persist(self) -> None:
         _STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
         _STORE_PATH.write_text(self.model_dump_json())
 
