@@ -23,154 +23,20 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Input, ListItem, ListView, RichLog, Static
+from textual.widgets import Footer, Header, Input, ListItem, ListView, RichLog, Static
 
 from fz_manager.config import Settings, get_settings
 from fz_manager.infrastructure.factorio_zone.client import FactorioZoneAPI
 from fz_manager.infrastructure.factorio_zone.session import FactorioZoneSession
 from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
 from fz_manager.terminal import Term
+from fz_manager.tui.components import ChoiceScreen, ConfirmScreen, TokenScreen
 
 STATIC_MENU_ITEMS = [
     "Manage mods",
     "Manage saves",
     "Exit",
 ]
-
-
-class TokenScreen(ModalScreen[str]):
-    """Modal asking for the factorio.zone user token before connecting.
-
-    Dismisses with the entered token (possibly empty -- factorio.zone issues
-    a fresh one on first visit if none is given, same as the old
-    `Main.choose_token()` flow).
-    """
-
-    CSS = """
-    TokenScreen {
-        align: center middle;
-    }
-
-    #token-dialog {
-        width: 60;
-        height: auto;
-        border: solid $primary;
-        padding: 1 2;
-        background: $panel;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="token-dialog"):
-            yield Static("Enter your factorio.zone user token (leave empty for a new one):")
-            yield Input(placeholder="user token", password=True, id="token-input")
-
-    def on_mount(self) -> None:
-        self.query_one("#token-input", Input).focus()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        event.stop()
-        self.dismiss(event.value.strip())
-
-
-class ChoiceScreen(ModalScreen[str | None]):
-    """Generic single-choice picker: a titled list of options, dismisses
-    with the selected value, or `None` if cancelled (Escape).
-
-    Reused for region/version/slot selection in the "Start server" flow --
-    ported from the old `Main.choose_region`/`choose_factorio_version`/
-    `choose_slot` (questionary `SelectMenu` screens), just as one shared
-    Textual modal instead of three near-identical ones.
-    """
-
-    BINDINGS = [("escape", "cancel", "Cancel")]
-
-    CSS = """
-    ChoiceScreen {
-        align: center middle;
-    }
-
-    #choice-dialog {
-        width: 60;
-        height: auto;
-        max-height: 20;
-        border: solid $primary;
-        padding: 1 2;
-        background: $panel;
-    }
-
-    #choice-dialog > ListView {
-        height: auto;
-        max-height: 14;
-    }
-    """
-
-    def __init__(self, title: str, options: list[tuple[str, str]]) -> None:
-        super().__init__()
-        self._title = title
-        self._options = options
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="choice-dialog"):
-            yield Static(self._title)
-            yield ListView(*[ListItem(Static(label), name=value) for label, value in self._options])
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        event.stop()
-        self.dismiss(event.item.name)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-
-class ConfirmScreen(ModalScreen[bool]):
-    """Yes/No confirmation dialog -- ported from the old flow's implicit
-    confirmation-by-proceeding-through-menus into an explicit last step."""
-
-    BINDINGS = [("escape", "cancel", "Cancel")]
-
-    CSS = """
-    ConfirmScreen {
-        align: center middle;
-    }
-
-    #confirm-dialog {
-        width: 60;
-        height: auto;
-        border: solid $primary;
-        padding: 1 2;
-        background: $panel;
-    }
-
-    #confirm-buttons {
-        height: auto;
-        align: center middle;
-        padding-top: 1;
-    }
-
-    #confirm-buttons > Button {
-        margin: 0 1;
-    }
-    """
-
-    def __init__(self, message: str) -> None:
-        super().__init__()
-        self._message = message
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="confirm-dialog"):
-            yield Static(self._message)
-            with Horizontal(id="confirm-buttons"):
-                yield Button("Yes", id="yes", variant="success")
-                yield Button("No", id="no", variant="error")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        self.dismiss(event.button.id == "yes")
-
-    def action_cancel(self) -> None:
-        self.dismiss(False)
 
 
 class FzManagerApp(App):
