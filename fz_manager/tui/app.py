@@ -141,7 +141,9 @@ class FzManagerApp(App):
         self.connect_client()
 
     def _refresh_status_bar(self) -> None:
-        self.main_screen.query_one(StatusBar).update_status(self.session.launch_id)
+        self.main_screen.query_one(StatusBar).update_status(
+            self.session.launch_id, self.session.server_status, self.session.server_address
+        )
 
     def _refresh_menu(self) -> None:
         self.main_screen.query_one(MenuPane).sync_items(self._menu_items())
@@ -173,9 +175,11 @@ class FzManagerApp(App):
         self.main_screen.query_one(LogPane).log_view.write(Text.from_ansi(text))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Enter in the command box. Just echoes into the log pane for now
-        -- wiring this to a real `session.api.send_command(...)` call is a
-        later step, once the app talks to a real, attached server.
+        """Enter in the command box: sends the command to the attached,
+        running server -- the new TUI's equivalent of the old `Shell`
+        ("Attach to server") screen, folded into the always-visible command
+        box instead of a separate full-screen mode, since the widgets are
+        already on screen either way.
 
         Guarded by id in case some other Input (e.g. TokenScreen's, which
         also calls `event.stop()` itself) ever ends up bubbling here.
@@ -185,8 +189,19 @@ class FzManagerApp(App):
         text = event.value.strip()
         if not text:
             return
-        self.push_log(Term.info("COMMAND:", text))
         event.input.clear()
+        if self.session.launch_id is None:
+            self.push_log(Term.error("COMMAND:", "No running server to attach to."))
+            return
+        self.push_log(Term.info("COMMAND:", text))
+        self.send_command(text)
+
+    @work(group="send-command")
+    async def send_command(self, command: str) -> None:
+        try:
+            await self.session.send_command(command)
+        except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+            self.push_log(Term.error("[command]", str(ex)))
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.list_view.id != "main-menu":
