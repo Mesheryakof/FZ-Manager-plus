@@ -71,8 +71,3 @@ class Colors:
     FACTORIO_FG_HEX = rgb_to_hex(FACTORIO_FG)
     FACTORIO_BG_HEX = rgb_to_hex(FACTORIO_BG)
 
-
-class String:
-    @staticmethod
-    def isblank(string: (str | None)):
-        return string is None or string.strip() == ""
