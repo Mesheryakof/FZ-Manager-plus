@@ -2,6 +2,7 @@ from fz_manager.tui.components.choice_screen import ChoiceScreen
 from fz_manager.tui.components.confirm_screen import ConfirmScreen
 from fz_manager.tui.components.log_pane import LogPane
 from fz_manager.tui.components.menu_pane import MenuPane
+from fz_manager.tui.components.mods_pane import ModsPane
 from fz_manager.tui.components.multi_choice_screen import MultiChoiceScreen
 from fz_manager.tui.components.path_screen import PathScreen
 from fz_manager.tui.components.selectable_list import SelectableList
@@ -13,6 +14,7 @@ __all__ = [
     "ConfirmScreen",
     "LogPane",
     "MenuPane",
+    "ModsPane",
     "MultiChoiceScreen",
     "PathScreen",
     "SelectableList",

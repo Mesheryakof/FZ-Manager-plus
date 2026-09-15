@@ -22,6 +22,7 @@ from fz_manager.tui.components import (
     ConfirmScreen,
     LogPane,
     MenuPane,
+    ModsPane,
     MultiChoiceScreen,
     PathScreen,
     SelectableList,
@@ -46,6 +47,18 @@ class FzManagerApp(App):
 
     #main-area {
         height: 1fr;
+    }
+
+    #sidebar {
+        width: 1fr;
+    }
+
+    #menu-pane {
+        height: auto;
+    }
+
+    #menu-pane > SelectableList {
+        height: auto;
     }
 
     #bottom-bar {
@@ -77,7 +90,9 @@ class FzManagerApp(App):
         yield Header(show_clock=True)
         with Horizontal(id="main-area"):
             yield LogPane(id="log-pane")
-            yield MenuPane(self._menu_items(), id="menu-pane")
+            with Vertical(id="sidebar"):
+                yield MenuPane(self._menu_items(), id="menu-pane")
+                yield ModsPane(self.session.mods, id="mods-pane")
         with Vertical(id="bottom-bar"):
             yield StatusBar("Trial: N/A", id="status-bar")
             yield Footer()
@@ -86,6 +101,7 @@ class FzManagerApp(App):
         self.session.add_logs_listener(self.push_log)
         self.set_interval(1, self._refresh_status_bar)
         self.set_interval(1, self._refresh_menu)
+        self.set_interval(1, self._refresh_mods)
         self.main_screen.query_one(MenuPane).list_view.focus()
         if self.settings.user_token:
             self._start_connecting()
@@ -109,6 +125,9 @@ class FzManagerApp(App):
 
     def _refresh_menu(self) -> None:
         self.main_screen.query_one(MenuPane).sync_items(self._menu_items())
+
+    def _refresh_mods(self) -> None:
+        self.main_screen.query_one(ModsPane).sync_mods(self.session.mods)
 
     @work(exclusive=True, group="ws-connect")
     async def connect_client(self) -> None:
@@ -161,6 +180,31 @@ class FzManagerApp(App):
             self.main_screen.query_one(LogPane).log_view.write(
                 Text(f"[menu] '{event.value}' is not implemented yet.", style="italic dim")
             )
+
+    def on_mods_pane_toggled(self, event: ModsPane.Toggled) -> None:
+        self.toggle_mod(event.mod_id, event.enabled)
+
+    @work(group="toggle-mod")
+    async def toggle_mod(self, mod_id: int, enabled: bool) -> None:
+        try:
+            await self.session.toggle_mod(mod_id, enabled)
+        except Exception as ex:  # noqa: BLE001
+            self.push_log(Term.error("[manage mods]", str(ex)))
+
+    def on_mods_pane_delete_requested(self, event: ModsPane.DeleteRequested) -> None:
+        self.delete_mod_flow(event.mod_id)
+
+    @work(exclusive=False, group="delete-mod")
+    async def delete_mod_flow(self, mod_id: int) -> None:
+        name = next((m["text"] for m in self.session.mods if m["id"] == mod_id), str(mod_id))
+        confirmed = await self.push_screen_wait(ConfirmScreen(f"Delete mod '{name}'?"))
+        if not confirmed:
+            return
+        try:
+            await self.session.delete_mod(mod_id)
+            self.push_log(Term.info("[manage mods]", f"Deleted {name}"))
+        except Exception as ex:  # noqa: BLE001
+            self.push_log(Term.error("[manage mods]", str(ex)))
 
     @work(exclusive=True, group="start-server")
     async def start_server_flow(self) -> None:
