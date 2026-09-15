@@ -41,6 +41,9 @@ class SavesPane(Vertical):
     def _build_options(saves: dict[str, str]) -> list[tuple[str, str]]:
         return [(f"{slot}: {description}", slot) for slot, description in sorted(saves.items())]
 
+    def on_mount(self) -> None:
+        self.border_title = "Saves"
+
     def compose(self) -> ComposeResult:
         yield SelectableList(self._build_options(self._saves))
 

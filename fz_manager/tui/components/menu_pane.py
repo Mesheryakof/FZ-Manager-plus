@@ -22,6 +22,9 @@ class MenuPane(Vertical):
         super().__init__(**kwargs)
         self._initial_items = items
 
+    def on_mount(self) -> None:
+        self.border_title = "Menu"
+
     def compose(self) -> ComposeResult:
         yield SelectableList([(item, item) for item in self._initial_items])
 

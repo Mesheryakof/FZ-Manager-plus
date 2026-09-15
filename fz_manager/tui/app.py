@@ -46,7 +46,7 @@ class MenuAction(str, Enum):
     STOP_SERVER = "Stop server"
     MANAGE_MODS = "Manage mods"
     MANAGE_SAVES = "Manage saves"
-    SYNC = "Sync with server"
+    SYNC = "Sync mods with server"
     EXIT = "Exit"
 
 

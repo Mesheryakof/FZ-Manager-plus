@@ -23,6 +23,9 @@ class LogPane(Vertical):
     }
     """
 
+    def on_mount(self) -> None:
+        self.border_title = "Logs"
+
     def compose(self) -> ComposeResult:
         log_view = RichLog(id="log-view", wrap=False, highlight=False, markup=False)
         log_view.can_focus = False

@@ -54,6 +54,9 @@ class ModsPane(Vertical):
             for mod in mods
         ]
 
+    def on_mount(self) -> None:
+        self.border_title = "Mods"
+
     def compose(self) -> ComposeResult:
         yield SelectionList(*self._build_selections(self._mods))
 
