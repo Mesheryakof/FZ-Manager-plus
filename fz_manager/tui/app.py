@@ -53,9 +53,9 @@ class FzManagerApp(App):
         ("ctrl+q", "quit", "Quit"),
     ]
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self, settings: Settings) -> None:
         super().__init__()
-        self.settings = settings or Settings(_cli_parse_args=False)
+        self.settings = settings
         api = FactorioZoneAPI(self.settings)
         socket = FactorioZoneSocket(self.settings)
         self.session = FactorioZoneSession(api, socket)
