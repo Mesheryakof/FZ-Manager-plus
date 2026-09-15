@@ -44,12 +44,12 @@ class MultiChoiceScreen(ModalScreen[list[str] | None]):
         self,
         title: str,
         options: list[tuple[str, str]],
-        preselected: list[str] = (),
+        preselected: list[str] | None = None,
     ) -> None:
         super().__init__()
         self._title = title
         self._options = options
-        self._preselected = set(preselected)
+        self._preselected = set(preselected or [])
 
     def compose(self) -> ComposeResult:
         with Vertical(id="multi-choice-dialog"):

@@ -15,8 +15,8 @@ class SelectableList(ListView):
             self.selectable_list = selectable_list
             self.value = value
 
-    def __init__(self, options: list[tuple[str, str]] = (), **kwargs) -> None:
-        self._options = list(options)
+    def __init__(self, options: list[tuple[str, str]] | None = None, **kwargs) -> None:
+        self._options = list(options or [])
         super().__init__(*self._build_items(self._options), **kwargs)
 
     @staticmethod

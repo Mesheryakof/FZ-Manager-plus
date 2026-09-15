@@ -34,9 +34,9 @@ class ModsPane(Vertical):
             self.mods_pane = mods_pane
             self.mod_id = mod_id
 
-    def __init__(self, mods: list[dict] = (), **kwargs) -> None:
+    def __init__(self, mods: list[dict] | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._mods = list(mods)
+        self._mods = list(mods or [])
 
     @staticmethod
     def _build_selections(mods: list[dict]) -> list[Selection]:
