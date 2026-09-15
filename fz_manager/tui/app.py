@@ -5,6 +5,7 @@ import re
 import traceback
 from collections.abc import Callable
 from datetime import datetime, timezone
+from enum import Enum
 from os import listdir, path
 
 from rich.text import Text
@@ -33,11 +34,27 @@ from fz_manager.tui.components import (
     TokenScreen,
 )
 
+class MenuAction(str, Enum):
+    """Menu item labels, doubling as their SelectableList values -- `str`
+    mixin so a member IS the label Textual actually stores/compares
+    (SelectableList/ListItem work in plain strings; this doesn't change
+    that, just gives the app side one typed name per action instead of
+    the same string literal duplicated between the menu list and the
+    dispatch below)."""
+
+    START_SERVER = "Start server"
+    STOP_SERVER = "Stop server"
+    MANAGE_MODS = "Manage mods"
+    MANAGE_SAVES = "Manage saves"
+    SYNC = "Sync with server"
+    EXIT = "Exit"
+
+
 STATIC_MENU_ITEMS = [
-    "Manage mods",
-    "Manage saves",
-    "Sync with server",
-    "Exit",
+    MenuAction.MANAGE_MODS,
+    MenuAction.MANAGE_SAVES,
+    MenuAction.SYNC,
+    MenuAction.EXIT,
 ]
 
 
@@ -104,8 +121,10 @@ class FzManagerApp(App):
             traceback.print_exception(type(error), error, error.__traceback__, file=fh)
         super()._handle_exception(error)
 
-    def _menu_items(self) -> list[str]:
-        instance_item = "Stop server" if self.session.launch_id is not None else "Start server"
+    def _menu_items(self) -> list[MenuAction]:
+        instance_item = (
+            MenuAction.STOP_SERVER if self.session.launch_id is not None else MenuAction.START_SERVER
+        )
         return [instance_item, *STATIC_MENU_ITEMS]
 
     @property
@@ -197,22 +216,27 @@ class FzManagerApp(App):
     def on_selectable_list_picked(self, event: SelectableList.Picked) -> None:
         if event.selectable_list is not self.main_screen.query_one(MenuPane).list_view:
             return
-        if event.value == "Exit":
-            self.exit()
-        elif event.value == "Start server":
-            self.start_server_flow()
-        elif event.value == "Stop server":
-            self.stop_server_flow()
-        elif event.value == "Manage mods":
-            self.manage_mods_flow()
-        elif event.value == "Manage saves":
-            self.manage_saves_flow()
-        elif event.value == "Sync with server":
-            self.sync_flow()
-        else:
+        try:
+            action = MenuAction(event.value)
+        except ValueError:
             self.main_screen.query_one(LogPane).log_view.write(
                 Text(f"[menu] '{event.value}' is not implemented yet.", style="italic dim")
             )
+            return
+
+        match action:
+            case MenuAction.EXIT:
+                self.exit()
+            case MenuAction.START_SERVER:
+                self.start_server_flow()
+            case MenuAction.STOP_SERVER:
+                self.stop_server_flow()
+            case MenuAction.MANAGE_MODS:
+                self.manage_mods_flow()
+            case MenuAction.MANAGE_SAVES:
+                self.manage_saves_flow()
+            case MenuAction.SYNC:
+                self.sync_flow()
 
     def on_mods_pane_toggled(self, event: ModsPane.Toggled) -> None:
         self.toggle_mod(event.mod_id, event.enabled)
