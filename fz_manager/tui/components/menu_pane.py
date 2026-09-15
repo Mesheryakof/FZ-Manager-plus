@@ -2,13 +2,8 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.widgets import ListItem, ListView, Static
 
-STATIC_MENU_ITEMS = [
-    "Manage mods",
-    "Manage saves",
-    "Exit",
-]
+from fz_manager.tui.components.selectable_list import SelectableList
 
 
 class MenuPane(Vertical):
@@ -18,7 +13,7 @@ class MenuPane(Vertical):
         border: solid $secondary;
     }
 
-    MenuPane > ListView {
+    MenuPane > SelectableList {
         height: 1fr;
     }
     """
@@ -28,20 +23,11 @@ class MenuPane(Vertical):
         self._initial_items = items
 
     def compose(self) -> ComposeResult:
-        yield ListView(
-            *[ListItem(Static(item), name=item) for item in self._initial_items],
-            id="main-menu",
-        )
+        yield SelectableList([(item, item) for item in self._initial_items])
 
     @property
-    def list_view(self) -> ListView:
-        return self.query_one("#main-menu", ListView)
+    def list_view(self) -> SelectableList:
+        return self.query_one(SelectableList)
 
     def sync_items(self, items: list[str]) -> None:
-        menu = self.list_view
-        current = [item.name for item in menu.children]
-        if current == items:
-            return
-        menu.clear()
-        for item in items:
-            menu.append(ListItem(Static(item), name=item))
+        self.list_view.sync_options([(item, item) for item in items])

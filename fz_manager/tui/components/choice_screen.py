@@ -3,7 +3,9 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import ListItem, ListView, Static
+from textual.widgets import Static
+
+from fz_manager.tui.components.selectable_list import SelectableList
 
 
 class ChoiceScreen(ModalScreen[str | None]):
@@ -23,7 +25,7 @@ class ChoiceScreen(ModalScreen[str | None]):
         background: $panel;
     }
 
-    #choice-dialog > ListView {
+    #choice-dialog > SelectableList {
         height: auto;
         max-height: 14;
     }
@@ -40,20 +42,18 @@ class ChoiceScreen(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="choice-dialog"):
             yield Static(self._title)
-            yield ListView(*[ListItem(Static(label), name=value) for label, value in self._options])
+            yield SelectableList(self._options)
 
     def on_mount(self) -> None:
         if self._default is None:
             return
-        list_view = self.query_one(ListView)
-        for index, (_, value) in enumerate(self._options):
-            if value == self._default:
-                list_view.index = index
-                break
+        index = self.query_one(SelectableList).index_of(self._default)
+        if index is not None:
+            self.query_one(SelectableList).index = index
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
+    def on_selectable_list_picked(self, event: SelectableList.Picked) -> None:
         event.stop()
-        self.dismiss(event.item.name)
+        self.dismiss(event.value)
 
     def action_cancel(self) -> None:
         self.dismiss(None)

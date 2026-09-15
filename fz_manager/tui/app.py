@@ -9,7 +9,7 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Input, ListView
+from textual.widgets import Footer, Header, Input
 
 from fz_manager.config import Settings, get_settings
 from fz_manager.infrastructure.factorio_zone import mods
@@ -18,16 +18,22 @@ from fz_manager.infrastructure.factorio_zone.session import FactorioZoneSession
 from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
 from fz_manager.terminal import Term
 from fz_manager.tui.components import (
-    STATIC_MENU_ITEMS,
     ChoiceScreen,
     ConfirmScreen,
     LogPane,
     MenuPane,
     MultiChoiceScreen,
     PathScreen,
+    SelectableList,
     StatusBar,
     TokenScreen,
 )
+
+STATIC_MENU_ITEMS = [
+    "Manage mods",
+    "Manage saves",
+    "Exit",
+]
 
 
 class FzManagerApp(App):
@@ -138,22 +144,22 @@ class FzManagerApp(App):
         except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[command]", str(ex)))
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        if event.list_view.id != "main-menu":
+    def on_selectable_list_picked(self, event: SelectableList.Picked) -> None:
+        if event.selectable_list is not self.main_screen.query_one(MenuPane).list_view:
             return
-        if event.item.name == "Exit":
+        if event.value == "Exit":
             self.exit()
-        elif event.item.name == "Start server":
+        elif event.value == "Start server":
             self.start_server_flow()
-        elif event.item.name == "Stop server":
+        elif event.value == "Stop server":
             self.stop_server_flow()
-        elif event.item.name == "Manage mods":
+        elif event.value == "Manage mods":
             self.manage_mods_flow()
-        elif event.item.name == "Manage saves":
+        elif event.value == "Manage saves":
             self.manage_saves_flow()
         else:
             self.main_screen.query_one(LogPane).log_view.write(
-                Text(f"[menu] '{event.item.name}' is not implemented yet.", style="italic dim")
+                Text(f"[menu] '{event.value}' is not implemented yet.", style="italic dim")
             )
 
     @work(exclusive=True, group="start-server")
