@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+import traceback
 from collections.abc import Callable
+from datetime import datetime, timezone
 from os import path
 
 from rich.text import Text
@@ -11,7 +13,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Input
 
-from fz_manager.config import Settings, get_settings
+from fz_manager.config import CRASH_LOG_PATH, Settings, get_settings
 from fz_manager.infrastructure.factorio_zone import mods
 from fz_manager.infrastructure.factorio_zone.client import FactorioZoneAPI
 from fz_manager.infrastructure.factorio_zone.session import FactorioZoneSession
@@ -77,6 +79,28 @@ class FzManagerApp(App):
         api = FactorioZoneAPI(self.settings)
         socket = FactorioZoneSocket(self.settings)
         self.session = FactorioZoneSession(api, socket)
+
+    def _handle_exception(self, error: Exception) -> None:
+        # App.run() swallows exceptions internally (renders Textual's own
+        # crash screen, returns normally) instead of re-raising them, so a
+        # try/except around app.run() in main() would never fire -- this is
+        # the actual hook Textual calls with the unhandled exception, before
+        # it does anything else with it.
+        #
+        # A @work-decorated method's exception arrives wrapped in a
+        # WorkerFailed (textual/worker.py), whose own __traceback__ only
+        # points at Textual's worker-scheduling code, not the actual bug --
+        # the real traceback lives on WorkerFailed.error. Chain it via
+        # __cause__ so traceback.print_exception includes both.
+        wrapped = getattr(error, "error", None)
+        if isinstance(wrapped, BaseException) and error.__cause__ is None:
+            error.__cause__ = wrapped
+
+        CRASH_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(CRASH_LOG_PATH, "a") as fh:
+            fh.write(f"\n--- {datetime.now(timezone.utc).isoformat()} ---\n")
+            traceback.print_exception(type(error), error, error.__traceback__, file=fh)
+        super()._handle_exception(error)
 
     def _menu_items(self) -> list[str]:
         instance_item = "Stop server" if self.session.launch_id is not None else "Start server"

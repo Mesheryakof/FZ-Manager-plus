@@ -9,7 +9,9 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-_STORE_PATH = Path(gettempdir()) / ".fzm" / "settings.json"
+_STATE_DIR = Path(gettempdir()) / ".fzm"
+_STORE_PATH = _STATE_DIR / "settings.json"
+CRASH_LOG_PATH = _STATE_DIR / "crash.log"
 
 
 class Settings(BaseSettings):
