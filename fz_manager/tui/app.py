@@ -126,8 +126,8 @@ class FzManagerApp(App):
     async def _refresh_menu(self) -> None:
         await self.main_screen.query_one(MenuPane).sync_items(self._menu_items())
 
-    def _refresh_mods(self) -> None:
-        self.main_screen.query_one(ModsPane).sync_mods(self.session.mods)
+    async def _refresh_mods(self) -> None:
+        await self.main_screen.query_one(ModsPane).sync_mods(self.session.mods)
 
     @work(exclusive=True, group="ws-connect")
     async def connect_client(self) -> None:

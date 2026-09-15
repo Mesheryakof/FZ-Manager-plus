@@ -51,17 +51,17 @@ class ModsPane(Vertical):
     def selection_list(self) -> SelectionList:
         return self.query_one(SelectionList)
 
-    def sync_mods(self, mods: list[ModEntry]) -> None:
+    async def sync_mods(self, mods: list[ModEntry]) -> None:
         if mods == self._mods:
             return
         self._mods = list(mods)
-        selection_list = self.selection_list
-        # batch_update: Textual paints on its own thread, so without this a
-        # repaint can land between clear_options() and add_options() and
-        # read a transiently-too-short option list (OptionDoesNotExist).
-        with self.app.batch_update():
-            selection_list.clear_options()
-            selection_list.add_options(self._build_selections(mods))
+        # recompose(): Textual's own atomic "remove children, call compose()
+        # again" primitive. clear_options()+add_options() (previously used
+        # here) each mutate SelectionList's internal option/line bookkeeping
+        # separately and can leave it briefly inconsistent -- recompose()
+        # rebuilds the whole SelectionList from scratch instead of patching
+        # it in place, so there's no partial state to observe.
+        await self.recompose()
 
     def on_selection_list_selection_toggled(self, event: SelectionList.SelectionToggled) -> None:
         event.stop()

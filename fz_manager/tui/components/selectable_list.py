@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from textual.app import ComposeResult
 from textual.message import Message
 from textual.widgets import ListItem, ListView, Static
 
@@ -16,25 +17,26 @@ class SelectableList(ListView):
             self.value = value
 
     def __init__(self, options: list[tuple[str, str]] | None = None, **kwargs) -> None:
+        super().__init__(**kwargs)
         self._options = list(options or [])
-        super().__init__(*self._build_items(self._options), **kwargs)
 
     @staticmethod
     def _build_items(options: list[tuple[str, str]]) -> list[ListItem]:
         return [ListItem(Static(label), name=value) for label, value in options]
 
+    def compose(self) -> ComposeResult:
+        yield from self._build_items(self._options)
+
     async def sync_options(self, options: list[tuple[str, str]]) -> None:
         if options == self._options:
             return
         self._options = list(options)
-        # clear()/extend() are both awaitable (ListView mounts/removes real
-        # child ListItem widgets, unlike SelectionList's plain data model)
-        # -- not awaiting clear() before extend() lets a repaint land with
-        # the old and new items both present. batch_update() additionally
-        # guards against Textual's separate paint thread reading mid-batch.
-        with self.app.batch_update():
-            await self.clear()
-            await self.extend(self._build_items(options))
+        # recompose(): Textual's atomic "remove children, call compose()
+        # again" primitive, instead of clear()/extend() (both return
+        # awaitables that were easy to leave unawaited, and mutate the
+        # existing ListView in two separate steps rather than rebuilding it
+        # in one). See ModsPane.sync_mods() for the same fix, same reason.
+        await self.recompose()
 
     def index_of(self, value: str) -> int | None:
         for index, (_, option_value) in enumerate(self._options):
