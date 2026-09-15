@@ -11,27 +11,21 @@ from collections.abc import Callable
 
 import httpx
 
-from fz_manager.config import Settings
-from fz_manager.infrastructure.factorio_zone.models import LoginResponse, StartInstanceResponse
+from fz_manager.config import Settings, get_settings
+from fz_manager.infrastructure.factorio_zone.models import LoginResponse
 from fz_manager.utils.api_router.http import ApiRouterHttp, UploadProgressFile
 
-# This runs at import time (module-level), so it deliberately uses
-# `Settings(_cli_parse_args=False)` rather than `get_settings()` -- the
-# latter parses `sys.argv` on first call, which would make importing this
-# module crash under foreign argv (tests, embedding, ...). See
-# `fz_manager.config.get_settings`'s docstring.
 router = ApiRouterHttp(
     client=httpx.AsyncClient(
-        base_url=f"https://{Settings(_cli_parse_args=False).factorio_zone_endpoint}",
+        base_url=f"https://{get_settings().factorio_zone_endpoint}",
     )
 )
 
 
 class FactorioZoneAPI:
-    def __init__(self, settings: Settings, visit_secret: str):
+    def __init__(self, settings: Settings, visit_secret: str | None = None):
         self.settings = settings
-        self.visit_secret: str = visit_secret
-        self.launch_id: str | None = None
+        self.visit_secret = visit_secret
 
     @router.endpoint(response_model=LoginResponse)
     def login(self, reconnected: bool = False) -> httpx.Request:
@@ -158,18 +152,18 @@ class FactorioZoneAPI:
             await response.aclose()
 
     @router.endpoint()
-    def send_command(self, command: str) -> httpx.Request:
+    def send_command(self, launch_id: int, command: str) -> httpx.Request:
         return router.build_request(
             method="POST",
             path="/api/instance/console",
             data={
                 "visitSecret": self.visit_secret,
-                "launchId": self.launch_id,
+                "launchId": launch_id,
                 "input": command,
             },
         )
 
-    @router.endpoint(response_model=StartInstanceResponse)
+    @router.endpoint()
     def start_instance(self, region: str, version: str, save: str) -> httpx.Request:
         return router.build_request(
             method="POST",
@@ -183,13 +177,13 @@ class FactorioZoneAPI:
         )
 
     @router.endpoint()
-    def stop_instance(self) -> httpx.Request:
+    def stop_instance(self, launch_id: int) -> httpx.Request:
         return router.build_request(
             method="POST",
             path="/api/instance/stop",
             data={
                 "visitSecret": self.visit_secret,
-                "launchId": self.launch_id,
+                "launchId": launch_id,
             },
             timeout=3600,
         )

@@ -18,13 +18,7 @@ class LoginResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     user_token: str = Field(alias="userToken")
-    referral_code: str = Field(alias="referralCode")
-
-
-class StartInstanceResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    launch_id: str = Field(alias="launchId")
+    referral_code: str | None = Field(default=None, alias="referralCode")
 
 
 # ---------------------------------------------------------------------------
@@ -44,8 +38,6 @@ class OptionsMessage(BaseModel):
 
     type: Literal["options"]
     name: str
-    # Intentionally left untyped for now (first draft) -- the shape of
-    # `options` depends on `name` (regions/versions/saves/...).
     options: Any
 
 
@@ -66,27 +58,25 @@ class StartingMessage(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     type: Literal["starting"]
-    launch_id: str | None = Field(default=None, alias="launchId")
+    launch_id: int | None = Field(default=None, alias="launchId")
 
 
 class StoppingMessage(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     type: Literal["stopping"]
-    launch_id: str | None = Field(default=None, alias="launchId")
+    launch_id: int | None = Field(default=None, alias="launchId")
 
 
 class RunningMessage(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     type: Literal["running"]
-    launch_id: str | None = Field(default=None, alias="launchId")
+    launch_id: int | None = Field(default=None, alias="launchId")
     socket: str | None = None
 
 
 class SlotMessage(BaseModel):
-    # The real message carries extra fields beyond `slot`/`type` -- allow
-    # them through rather than rejecting/discarding them.
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
     type: Literal["slot"]
@@ -99,6 +89,7 @@ class LogMessage(BaseModel):
     type: Literal["log"]
     num: int
     line: str | None = None
+    launch_id: int | None = Field(default=None, alias="launchId")
 
 
 class InfoMessage(BaseModel):
@@ -120,6 +111,28 @@ class ErrorMessage(BaseModel):
 
     type: Literal["error"]
     line: str | None = None
+
+
+class BlankMessage(BaseModel):
+    """Fallback for a WS frame that failed to validate against any of the
+    models above -- an unrecognized `type`, or a known `type` whose payload
+    changed shape in some way we haven't modeled (e.g. a field showing up
+    with an unexpected JSON type).
+
+    Not a member of `FzMessage` -- pydantic's discriminated unions have no
+    built-in "anything else" case, every tag must be declared up front, or
+    validation raises. Instead, `FactorioZoneSocket` catches that
+    `ValidationError` and constructs this directly from the raw frame (see
+    its `on_decode_error` hook), so `FactorioZoneSession.run()`'s message
+    loop never crashes on a message shape we simply haven't modeled yet --
+    it just falls through to `@FactorioZoneSocket.on(BlankMessage)`.
+    `extra="allow"` keeps whatever fields came in instead of discarding
+    them, so they're still visible (e.g. in logs) for debugging.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    type: str
 
 
 FzMessage = Annotated[
