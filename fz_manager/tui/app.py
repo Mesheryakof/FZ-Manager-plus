@@ -5,7 +5,7 @@ import re
 import traceback
 from collections.abc import Callable
 from datetime import datetime, timezone
-from os import path
+from os import listdir, path
 
 from rich.text import Text
 from textual import work
@@ -36,6 +36,7 @@ from fz_manager.tui.components import (
 STATIC_MENU_ITEMS = [
     "Manage mods",
     "Manage saves",
+    "Sync with server",
     "Exit",
 ]
 
@@ -206,6 +207,8 @@ class FzManagerApp(App):
             self.manage_mods_flow()
         elif event.value == "Manage saves":
             self.manage_saves_flow()
+        elif event.value == "Sync with server":
+            self.sync_flow()
         else:
             self.main_screen.query_one(LogPane).log_view.write(
                 Text(f"[menu] '{event.value}' is not implemented yet.", style="italic dim")
@@ -639,6 +642,167 @@ class FzManagerApp(App):
                 self.push_log(Term.info("[download save]", f"Slot {slot_int}: done"))
             except Exception as ex:  # noqa: BLE001
                 self.push_log(Term.error("[download save]", str(ex)))
+
+    @staticmethod
+    def _local_save_files(folder: str) -> dict[str, str]:
+        """slot name -> file path, for `slotN.zip` files directly inside
+        `folder` -- the same naming _download_save()/download_save_slot_flow()
+        already write, used here symmetrically for matching on push/pull."""
+        files: dict[str, str] = {}
+        for entry in listdir(folder):
+            match = re.fullmatch(r"(slot\d+)\.zip", entry)
+            if match:
+                files[match.group(1)] = path.join(folder, entry)
+        return files
+
+    @work(exclusive=True, group="sync")
+    async def sync_flow(self) -> None:
+        """Push local mods/saves to the server, or pull saves back down.
+
+        Matching is by name only (mod filename <-> mod.text; save slot
+        number <-> local `slotN.zip`), no content/size comparison -- and
+        only ever fills gaps, never deletes or overwrites. Mods have no
+        download endpoint (FactorioZoneAPI has upload_mod/toggle_mod/
+        delete_mod, no download_mod), so pulling only ever applies to
+        saves; mods sync is push-only.
+        """
+        mods_folder = await self.push_screen_wait(
+            PathScreen(
+                "Insert path to mods folder:",
+                default=self.settings.mods_path or "",
+                validator=lambda p: path.isdir(p),
+                error_message="Not a directory.",
+            )
+        )
+        if mods_folder is None:
+            return
+        self.settings.mods_path = mods_folder
+
+        saves_folder = await self.push_screen_wait(
+            PathScreen(
+                "Insert path to saves folder:",
+                default=self.settings.saves_path or "",
+                validator=lambda p: path.isdir(p),
+                error_message="Not a directory.",
+            )
+        )
+        if saves_folder is None:
+            return
+        self.settings.saves_path = saves_folder
+
+        direction = await self.push_screen_wait(
+            ChoiceScreen(
+                "Sync direction:",
+                [
+                    ("Push to server (local -> server)", "push"),
+                    ("Pull from server (server -> local, saves only)", "pull"),
+                ],
+            )
+        )
+        if direction is None:
+            return
+
+        if direction == "push":
+            await self._sync_push(mods_folder, saves_folder)
+        else:
+            await self._sync_pull(saves_folder)
+
+    async def _sync_push(self, mods_folder: str, saves_folder: str) -> None:
+        root, zip_names = mods.list_zip_files(mods_folder)
+        remote_mod_names = {m.text for m in self.session.mods}
+        missing_mods = [name for name in zip_names if name not in remote_mod_names]
+
+        local_saves = self._local_save_files(saves_folder)
+        missing_saves = {
+            slot: file_path
+            for slot, file_path in local_saves.items()
+            if self.session.saves.get(slot, "").endswith("(empty)")
+        }
+        occupied_saves = [
+            slot
+            for slot in local_saves
+            if slot not in missing_saves and not self.session.saves.get(slot, "").endswith("(empty)")
+        ]
+
+        if not missing_mods and not missing_saves:
+            self.push_log(Term.info("[sync]", "Nothing to push -- server already has everything."))
+            return
+
+        confirmed = await self.push_screen_wait(
+            ConfirmScreen(
+                f"Push {len(missing_mods)} mod(s) and {len(missing_saves)} save(s) to the server?"
+            )
+        )
+        if not confirmed:
+            return
+
+        for name in missing_mods:
+            file_path = path.join(root, name)
+            size = path.getsize(file_path)
+            self.push_log(Term.info("[sync]", f"Uploading mod {name}..."))
+            try:
+                with open(file_path, "rb") as fh:
+                    await self.session.upload_mod(
+                        name, fh, size, self._progress_logger(f"[sync] {name}", size)
+                    )
+                self.push_log(Term.info("[sync]", f"{name}: done"))
+            except Exception as ex:  # noqa: BLE001
+                self.push_log(Term.error("[sync]", f"{name}: {ex}"))
+
+        for slot, file_path in missing_saves.items():
+            filename = path.basename(file_path)
+            size = path.getsize(file_path)
+            self.push_log(Term.info("[sync]", f"Uploading save {filename} to {slot}..."))
+            try:
+                with open(file_path, "rb") as fh:
+                    await self.session.upload_save(
+                        filename, fh, size, slot, self._progress_logger(f"[sync] {slot}", size)
+                    )
+                self.push_log(Term.info("[sync]", f"{slot}: done"))
+            except Exception as ex:  # noqa: BLE001
+                self.push_log(Term.error("[sync]", f"{slot}: {ex}"))
+
+        for slot in occupied_saves:
+            self.push_log(
+                Term.warn("[sync]", f"{slot} already has a save on the server -- skipped, not overwritten")
+            )
+
+    async def _sync_pull(self, saves_folder: str) -> None:
+        self.push_log(
+            Term.info(
+                "[sync]", "Mods have no download endpoint on the server -- skipping mods."
+            )
+        )
+
+        local_saves = self._local_save_files(saves_folder)
+        missing_locally = {
+            slot: description
+            for slot, description in self.session.saves.items()
+            if not description.endswith("(empty)") and slot not in local_saves
+        }
+
+        if not missing_locally:
+            self.push_log(Term.info("[sync]", "Nothing to pull -- local folder already has everything."))
+            return
+
+        confirmed = await self.push_screen_wait(
+            ConfirmScreen(f"Pull {len(missing_locally)} save(s) from the server?")
+        )
+        if not confirmed:
+            return
+
+        for slot, description in missing_locally.items():
+            size_match = re.search(r"(\d+\.\d+)MB", description)
+            expected_size = float(size_match[1]) * 1048576 if size_match else None
+            target = path.join(saves_folder, f"{slot}.zip")
+            self.push_log(Term.info("[sync]", f"Downloading {slot}..."))
+            try:
+                await self.session.download_save_slot(
+                    slot, target, self._progress_logger(f"[sync] {slot}", expected_size)
+                )
+                self.push_log(Term.info("[sync]", f"{slot}: done"))
+            except Exception as ex:  # noqa: BLE001
+                self.push_log(Term.error("[sync]", f"{slot}: {ex}"))
 
     async def action_quit(self) -> None:
         self.session.remove_logs_listener(self.push_log)
