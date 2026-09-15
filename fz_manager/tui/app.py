@@ -24,6 +24,8 @@ or, for Textual's live dev console (in a second terminal run
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from os import path
 
 from rich.text import Text
 from textual import work
@@ -32,6 +34,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Input, ListView
 
 from fz_manager.config import Settings, get_settings
+from fz_manager.infrastructure.factorio_zone import mods
 from fz_manager.infrastructure.factorio_zone.client import FactorioZoneAPI
 from fz_manager.infrastructure.factorio_zone.session import FactorioZoneSession
 from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
@@ -43,6 +46,8 @@ from fz_manager.tui.components import (
     ConfirmScreen,
     LogPane,
     MenuPane,
+    MultiChoiceScreen,
+    PathScreen,
     StatusBar,
     TokenScreen,
 )
@@ -212,6 +217,8 @@ class FzManagerApp(App):
             self.start_server_flow()
         elif event.item.name == "Stop server":
             self.stop_server_flow()
+        elif event.item.name == "Manage mods":
+            self.manage_mods_flow()
         else:
             self.main_screen.query_one(LogPane).log_view.write(
                 Text(f"[menu] '{event.item.name}' is not implemented yet.", style="italic dim")
@@ -307,6 +314,158 @@ class FzManagerApp(App):
             self.push_log(Term.info("[stop server]", "Instance stopped."))
         except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
             self.push_log(Term.error("[stop server]", str(ex)))
+
+    def _progress_logger(self, label: str, total: float | None) -> Callable[[int], None]:
+        """Builds a throttled upload/download progress callback: logs at
+        25/50/75/100% instead of once per chunk read (`UploadProgressFile`/
+        `download_save_slot` call back far more often than that).
+
+        Replaces the old `rich.progress.Progress` bars -- those print
+        straight to the terminal, which fights Textual for control of the
+        screen buffer and can't be used from inside a running Textual app;
+        log lines through the existing `push_log`/`RichLog` pipe instead.
+        """
+        reported: set[int] = set()
+
+        def on_progress(bytes_done: int) -> None:
+            if not total:
+                return
+            step = min(100, int(bytes_done * 100 / total) // 25 * 25)
+            if step and step not in reported:
+                reported.add(step)
+                self.push_log(Term.info(label, f"{step}%"))
+
+        return on_progress
+
+    @work(exclusive=True, group="manage-mods")
+    async def manage_mods_flow(self) -> None:
+        """"Manage mods" submenu -- ported from the old `Main.manage_mods_menu()`
+        loop (create mod-settings.zip / upload / enable-disable / delete),
+        just driven by `ChoiceScreen` instead of a nested questionary
+        `ActionMenu`."""
+        while True:
+            action = await self.push_screen_wait(
+                ChoiceScreen(
+                    "Manage mods:",
+                    [
+                        ("Create mod-settings.zip", "create-mod-settings"),
+                        ("Upload mods", "upload-mods"),
+                        ("Enable/Disable uploaded mods", "toggle-mods"),
+                        ("Delete uploaded mods", "delete-mods"),
+                        ("Back", "back"),
+                    ],
+                )
+            )
+            if action is None or action == "back":
+                return
+            if action == "create-mod-settings":
+                await self._create_mod_settings()
+            elif action == "upload-mods":
+                await self._upload_mods()
+            elif action == "toggle-mods":
+                await self._toggle_mods()
+            elif action == "delete-mods":
+                await self._delete_mods()
+
+    async def _create_mod_settings(self) -> None:
+        mods_folder = await self.push_screen_wait(
+            PathScreen(
+                "Insert path to mods folder:",
+                default=self.storage.get("modsPath") or "",
+                validator=lambda p: path.isdir(p),
+                error_message="Not a directory.",
+            )
+        )
+        if mods_folder is None:
+            return
+        self.storage.store("modsPath", mods_folder)
+
+        try:
+            mod_settings_zip_path = mods.create_mod_settings_zip(mods_folder)
+        except FileNotFoundError as ex:
+            self.push_log(Term.error("[manage mods]", str(ex)))
+            return
+        self.push_log(Term.info("[manage mods]", f"{mod_settings_zip_path} created"))
+
+    async def _upload_mods(self) -> None:
+        mods_folder = await self.push_screen_wait(
+            PathScreen(
+                "Insert path to mods folder:",
+                default=self.storage.get("modsPath") or "",
+                validator=lambda p: path.exists(p),
+                error_message="Path does not exist.",
+            )
+        )
+        if mods_folder is None:
+            return
+        self.storage.store("modsPath", mods_folder)
+
+        root, zip_names = mods.list_zip_files(mods_folder)
+        if not zip_names:
+            self.push_log(Term.error("[upload mods]", "No mod found in folder"))
+            return
+
+        selected = await self.push_screen_wait(
+            MultiChoiceScreen(
+                "Choose mods to upload:", [(name, name) for name in zip_names], preselected=zip_names
+            )
+        )
+        if not selected:
+            return
+
+        for mod_file in mods.build_mod_files(root, selected):
+            self.push_log(Term.info("[upload mods]", f"Uploading {mod_file.name}..."))
+            try:
+                with open(mod_file.file_path, "rb") as fh:
+                    await self.session.upload_mod(
+                        mod_file.name,
+                        fh,
+                        mod_file.size,
+                        self._progress_logger(f"[upload mods] {mod_file.name}", mod_file.size),
+                    )
+                self.push_log(Term.info("[upload mods]", f"{mod_file.name}: done"))
+            except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
+                self.push_log(Term.error("[upload mods]", f"{mod_file.name}: {ex}"))
+
+    async def _toggle_mods(self) -> None:
+        if not self.session.mods:
+            self.push_log(Term.error("[manage mods]", "No uploaded mods found"))
+            return
+
+        options = [(m["text"], str(m["id"])) for m in self.session.mods]
+        preselected = [str(m["id"]) for m in self.session.mods if m["enabled"]]
+        selected = await self.push_screen_wait(
+            MultiChoiceScreen("Enable/Disable mods:", options, preselected=preselected)
+        )
+        if selected is None:
+            return
+
+        added = set(selected) - set(preselected)
+        removed = set(preselected) - set(selected)
+        for mod_id in added:
+            self.push_log(Term.info("[manage mods]", f"Enabling mod {mod_id}"))
+            await self.session.toggle_mod(int(mod_id), True)
+        for mod_id in removed:
+            self.push_log(Term.info("[manage mods]", f"Disabling mod {mod_id}"))
+            await self.session.toggle_mod(int(mod_id), False)
+
+    async def _delete_mods(self) -> None:
+        if not self.session.mods:
+            self.push_log(Term.error("[manage mods]", "No uploaded mods found"))
+            return
+
+        options = [(m["text"], str(m["id"])) for m in self.session.mods]
+        selected = await self.push_screen_wait(
+            MultiChoiceScreen("Delete mods:", options, preselected=[])
+        )
+        if not selected:
+            return
+        confirmed = await self.push_screen_wait(ConfirmScreen(f"Delete {len(selected)} mod(s)?"))
+        if not confirmed:
+            return
+        for mod_id in selected:
+            self.push_log(Term.info("[manage mods]", f"Deleting mod {mod_id}"))
+            await self.session.delete_mod(int(mod_id))
 
     async def action_quit(self) -> None:
         self.session.remove_logs_listener(self.push_log)
