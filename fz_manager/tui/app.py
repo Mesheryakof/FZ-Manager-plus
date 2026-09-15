@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 import traceback
 from collections.abc import Callable
@@ -44,17 +45,11 @@ class MenuAction(str, Enum):
 
     START_SERVER = "Start server"
     STOP_SERVER = "Stop server"
-    MANAGE_MODS = "Manage mods"
-    MANAGE_SAVES = "Manage saves"
     SYNC = "Sync mods with server"
-    EXIT = "Exit"
 
 
 STATIC_MENU_ITEMS = [
-    MenuAction.MANAGE_MODS,
-    MenuAction.MANAGE_SAVES,
     MenuAction.SYNC,
-    MenuAction.EXIT,
 ]
 
 
@@ -100,17 +95,7 @@ class FzManagerApp(App):
         self.session = FactorioZoneSession(api, socket)
 
     def _handle_exception(self, error: Exception) -> None:
-        # App.run() swallows exceptions internally (renders Textual's own
-        # crash screen, returns normally) instead of re-raising them, so a
-        # try/except around app.run() in main() would never fire -- this is
-        # the actual hook Textual calls with the unhandled exception, before
-        # it does anything else with it.
-        #
-        # A @work-decorated method's exception arrives wrapped in a
-        # WorkerFailed (textual/worker.py), whose own __traceback__ only
-        # points at Textual's worker-scheduling code, not the actual bug --
-        # the real traceback lives on WorkerFailed.error. Chain it via
-        # __cause__ so traceback.print_exception includes both.
+
         wrapped = getattr(error, "error", None)
         if isinstance(wrapped, BaseException) and error.__cause__ is None:
             error.__cause__ = wrapped
@@ -225,16 +210,10 @@ class FzManagerApp(App):
             return
 
         match action:
-            case MenuAction.EXIT:
-                self.exit()
             case MenuAction.START_SERVER:
                 self.start_server_flow()
             case MenuAction.STOP_SERVER:
                 self.stop_server_flow()
-            case MenuAction.MANAGE_MODS:
-                self.manage_mods_flow()
-            case MenuAction.MANAGE_SAVES:
-                self.manage_saves_flow()
             case MenuAction.SYNC:
                 self.sync_flow()
 
@@ -411,32 +390,6 @@ class FzManagerApp(App):
 
         return on_progress
 
-    @work(exclusive=True, group="manage-mods")
-    async def manage_mods_flow(self) -> None:
-        while True:
-            action = await self.push_screen_wait(
-                ChoiceScreen(
-                    "Manage mods:",
-                    [
-                        ("Create mod-settings.zip", "create-mod-settings"),
-                        ("Upload mods", "upload-mods"),
-                        ("Enable/Disable uploaded mods", "toggle-mods"),
-                        ("Delete uploaded mods", "delete-mods"),
-                        ("Back", "back"),
-                    ],
-                )
-            )
-            if action is None or action == "back":
-                return
-            if action == "create-mod-settings":
-                await self._create_mod_settings()
-            elif action == "upload-mods":
-                await self._upload_mods()
-            elif action == "toggle-mods":
-                await self._toggle_mods()
-            elif action == "delete-mods":
-                await self._delete_mods()
-
     async def _create_mod_settings(self) -> None:
         mods_folder = await self.push_screen_wait(
             PathScreen(
@@ -536,29 +489,6 @@ class FzManagerApp(App):
         for mod_id in selected:
             self.push_log(Term.info("[manage mods]", f"Deleting mod {mod_id}"))
             await self.session.delete_mod(int(mod_id))
-
-    @work(exclusive=True, group="manage-saves")
-    async def manage_saves_flow(self) -> None:
-        while True:
-            action = await self.push_screen_wait(
-                ChoiceScreen(
-                    "Manage saves:",
-                    [
-                        ("Upload save", "upload-save"),
-                        ("Delete save", "delete-save"),
-                        ("Download save", "download-save"),
-                        ("Back", "back"),
-                    ],
-                )
-            )
-            if action is None or action == "back":
-                return
-            if action == "upload-save":
-                await self._upload_save()
-            elif action == "delete-save":
-                await self._delete_save()
-            elif action == "download-save":
-                await self._download_save()
 
     async def _upload_save(self) -> None:
         file_path = await self.push_screen_wait(
@@ -832,6 +762,9 @@ class FzManagerApp(App):
         self.session.remove_logs_listener(self.push_log)
         if self.session.user_token:
             self.settings.user_token = self.session.user_token
+        self.workers.cancel_group(self, "ws-connect")
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(self.session.socket.close(), timeout=2)
         self.exit()
 
 
