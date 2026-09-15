@@ -14,6 +14,10 @@ class TokenScreen(ModalScreen[str]):
     Dismisses with the entered token (possibly empty -- factorio.zone issues
     a fresh one on first visit if none is given, same as the old
     `Main.choose_token()` flow).
+
+    `default`, if given, prefills the input -- used to restore the last
+    token from `Storage` (replaces the old `load_last_value`/`FileHistory`
+    "load last answer" trick, which was prompt_toolkit-specific).
     """
 
     CSS = """
@@ -30,10 +34,14 @@ class TokenScreen(ModalScreen[str]):
     }
     """
 
+    def __init__(self, default: str = "") -> None:
+        super().__init__()
+        self._default = default
+
     def compose(self) -> ComposeResult:
         with Vertical(id="token-dialog"):
             yield Static("Enter your factorio.zone user token (leave empty for a new one):")
-            yield Input(placeholder="user token", password=True, id="token-input")
+            yield Input(value=self._default, placeholder="user token", password=True, id="token-input")
 
     def on_mount(self) -> None:
         self.query_one("#token-input", Input).focus()

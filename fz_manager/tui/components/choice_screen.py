@@ -17,6 +17,10 @@ class ChoiceScreen(ModalScreen[str | None]):
     ported from the old `Main.choose_region`/`choose_factorio_version`/
     `choose_slot` (questionary `SelectMenu` screens), just as one shared
     Textual modal instead of three near-identical ones.
+
+    `default`, if given, pre-highlights the matching option (by value) on
+    mount -- same idea as `SelectMenu(default=...)` in the old UI, used to
+    restore the last-picked region/version/slot from `Storage`.
     """
 
     BINDINGS = [("escape", "cancel", "Cancel")]
@@ -41,15 +45,27 @@ class ChoiceScreen(ModalScreen[str | None]):
     }
     """
 
-    def __init__(self, title: str, options: list[tuple[str, str]]) -> None:
+    def __init__(
+        self, title: str, options: list[tuple[str, str]], default: str | None = None
+    ) -> None:
         super().__init__()
         self._title = title
         self._options = options
+        self._default = default
 
     def compose(self) -> ComposeResult:
         with Vertical(id="choice-dialog"):
             yield Static(self._title)
             yield ListView(*[ListItem(Static(label), name=value) for label, value in self._options])
+
+    def on_mount(self) -> None:
+        if self._default is None:
+            return
+        list_view = self.query_one(ListView)
+        for index, (_, value) in enumerate(self._options):
+            if value == self._default:
+                list_view.index = index
+                break
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         event.stop()
