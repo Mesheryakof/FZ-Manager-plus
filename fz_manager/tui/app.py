@@ -129,6 +129,12 @@ class FzManagerApp(App):
         # same pattern as session.wait_sync()'s own polling.
         self.set_interval(1, self._refresh_status_bar)
         self.set_interval(1, self._refresh_menu)
+        # Without this, Textual auto-focuses the first focusable widget in
+        # DOM order on mount -- now that #log-view opts out of focus (see
+        # LogPane), that would be #command-input. The menu is the more
+        # useful default: it's how you act on the dashboard, and typing a
+        # command only matters once a server is actually running.
+        self.main_screen.query_one(MenuPane).list_view.focus()
         if self.settings.user_token:
             # Token already supplied programmatically (e.g. tests) -- skip
             # the prompt and connect right away.

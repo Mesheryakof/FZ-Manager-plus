@@ -35,11 +35,6 @@ class LogPane(Vertical):
 
     def compose(self) -> ComposeResult:
         log_view = RichLog(id="log-view", wrap=False, highlight=False, markup=False)
-        # RichLog has no `can_focus` constructor param, only the instance
-        # attribute (inherited from Widget, where it defaults to True) --
-        # it's focusable by default, which would put it in the Tab cycle
-        # alongside the command input/menu for no reason: it's a read-only
-        # log stream, nothing to type into or interact with via focus.
         log_view.can_focus = False
         yield log_view
         yield Input(placeholder="Type a message and press Enter...", id="command-input")
