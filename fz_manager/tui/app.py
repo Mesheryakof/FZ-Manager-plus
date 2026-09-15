@@ -27,6 +27,7 @@ from fz_manager.tui.components import (
     ModsPane,
     MultiChoiceScreen,
     PathScreen,
+    SavesPane,
     SelectableList,
     StatusBar,
     TokenScreen,
@@ -117,6 +118,7 @@ class FzManagerApp(App):
             with Vertical(id="sidebar"):
                 yield MenuPane(self._menu_items(), id="menu-pane")
                 yield ModsPane(self.session.mods, id="mods-pane")
+                yield SavesPane(self.session.saves, id="saves-pane")
         with Vertical(id="bottom-bar"):
             yield StatusBar("Trial: N/A", id="status-bar")
             yield Footer()
@@ -126,6 +128,7 @@ class FzManagerApp(App):
         self.set_interval(1, self._refresh_status_bar)
         self.set_interval(1, self._refresh_menu)
         self.set_interval(1, self._refresh_mods)
+        self.set_interval(1, self._refresh_saves)
         self.main_screen.query_one(MenuPane).list_view.focus()
         if self.settings.user_token:
             self._start_connecting()
@@ -152,6 +155,9 @@ class FzManagerApp(App):
 
     async def _refresh_mods(self) -> None:
         await self.main_screen.query_one(ModsPane).sync_mods(self.session.mods)
+
+    async def _refresh_saves(self) -> None:
+        await self.main_screen.query_one(SavesPane).sync_saves(self.session.saves)
 
     @work(exclusive=True, group="ws-connect")
     async def connect_client(self) -> None:
@@ -229,6 +235,62 @@ class FzManagerApp(App):
             self.push_log(Term.info("[manage mods]", f"Deleted {name}"))
         except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[manage mods]", str(ex)))
+
+    def on_saves_pane_download_requested(self, event: SavesPane.DownloadRequested) -> None:
+        self.download_save_slot_flow(event.slot)
+
+    @work(exclusive=False, group="download-save")
+    async def download_save_slot_flow(self, slot: str) -> None:
+        slot_index = int(slot.removeprefix("slot"))
+        description = self.session.saves.get(slot, "")
+        if description.endswith("(empty)"):
+            self.push_log(Term.error("[download save]", f"Slot {slot_index} is empty"))
+            return
+
+        directory = await self.push_screen_wait(
+            PathScreen(
+                "Insert download directory path:",
+                default=self.settings.saves_path or "",
+                validator=lambda p: path.isdir(p),
+                error_message="Not a directory.",
+            )
+        )
+        if directory is None:
+            return
+        self.settings.saves_path = directory
+
+        size_match = re.search(r"(\d+\.\d+)MB", description)
+        expected_size = float(size_match[1]) * 1048576 if size_match else None
+        target = path.join(directory, f"slot{slot_index}.zip")
+        self.push_log(Term.info("[download save]", f"Downloading slot {slot_index}..."))
+        try:
+            await self.session.download_save_slot(
+                slot, target, self._progress_logger(f"[download save] slot {slot_index}", expected_size)
+            )
+            self.push_log(Term.info("[download save]", f"Slot {slot_index}: done"))
+        except Exception as ex:  # noqa: BLE001
+            self.push_log(Term.error("[download save]", str(ex)))
+
+    def on_saves_pane_delete_requested(self, event: SavesPane.DeleteRequested) -> None:
+        self.delete_save_slot_flow(event.slot)
+
+    @work(exclusive=False, group="delete-save")
+    async def delete_save_slot_flow(self, slot: str) -> None:
+        slot_index = int(slot.removeprefix("slot"))
+        description = self.session.saves.get(slot, "")
+        if description.endswith("(empty)"):
+            self.push_log(Term.error("[delete save]", f"Slot {slot_index} is already empty"))
+            return
+        confirmed = await self.push_screen_wait(
+            ConfirmScreen(f"Delete slot {slot_index} ({description})?")
+        )
+        if not confirmed:
+            return
+        try:
+            await self.session.delete_save_slot(slot)
+            self.push_log(Term.info("[delete save]", f"Deleted slot {slot_index}"))
+        except Exception as ex:  # noqa: BLE001
+            self.push_log(Term.error("[delete save]", str(ex)))
 
     @work(exclusive=True, group="start-server")
     async def start_server_flow(self) -> None:
