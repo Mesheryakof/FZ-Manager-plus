@@ -1,13 +1,17 @@
-import asyncio
+"""Console entry point for `fzm`/`fz-manager` (see pyproject.toml's
+`[tool.poetry.scripts]`).
 
-from fz_manager.terminal import Term
-from fz_manager.ui.app import Main
+Launches the Textual dashboard TUI (`fz_manager.tui.app`), which has now
+reached feature parity with the old questionary/prompt_toolkit UI
+(`fz_manager.ui.app.Main`, removed) -- Start/Stop server, Manage mods,
+Manage saves, attach-to-server console, and persisted last-used values.
+
+No `Term.cls()` before/after like the old entry point needed: Textual owns
+the terminal's alternate screen buffer itself and restores it on exit.
+"""
+
+from fz_manager.tui.app import main as run_tui
 
 
-def main():
-    Term.cls()
-    program = Main()
-    asyncio.get_event_loop_policy().get_event_loop().run_until_complete(
-        program.main()
-    )  # pragma: no cover
-    Term.cls()
+def main() -> None:
+    run_tui()
