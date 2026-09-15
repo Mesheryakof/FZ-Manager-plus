@@ -35,6 +35,7 @@ from fz_manager.config import Settings, get_settings
 from fz_manager.infrastructure.factorio_zone.client import FactorioZoneAPI
 from fz_manager.infrastructure.factorio_zone.session import FactorioZoneSession
 from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
+from fz_manager.storage import Storage
 from fz_manager.terminal import Term
 from fz_manager.tui.components import (
     STATIC_MENU_ITEMS,
@@ -83,6 +84,12 @@ class FzManagerApp(App):
         api = FactorioZoneAPI(self.settings)
         socket = FactorioZoneSocket(self.settings)
         self.session = FactorioZoneSession(api, socket)
+        # Same on-disk JSON store + prompt_toolkit FileHistory files the old
+        # UI used (fz_manager/storage.py, untouched) -- just consumed
+        # differently here: single last-value get()/store() instead of
+        # cycling through FileHistory with Up/Down, since Textual's Input
+        # doesn't have prompt_toolkit's buffer history built in.
+        self.storage = Storage()
 
     def _menu_items(self) -> list[str]:
         instance_item = "Stop server" if self.session.launch_id is not None else "Start server"
@@ -121,7 +128,9 @@ class FzManagerApp(App):
             # the prompt and connect right away.
             self._start_connecting()
         else:
-            self.push_screen(TokenScreen(), self._on_token_submitted)
+            self.push_screen(
+                TokenScreen(default=self.storage.get("userToken") or ""), self._on_token_submitted
+            )
 
     def _on_token_submitted(self, token: str) -> None:
         self.settings.user_token = token or None
@@ -209,10 +218,15 @@ class FzManagerApp(App):
             self.push_log(Term.error("[start server]", "No regions available yet (still syncing?)"))
             return
         region = await self.push_screen_wait(
-            ChoiceScreen("Choose a region:", [(f"{code} - {name}", code) for code, name in regions])
+            ChoiceScreen(
+                "Choose a region:",
+                [(f"{code} - {name}", code) for code, name in regions],
+                default=self.storage.get("region"),
+            )
         )
         if region is None:
             return
+        self.storage.store("region", region)
 
         versions = list(self.session.versions)
         if not versions:
@@ -221,10 +235,15 @@ class FzManagerApp(App):
             )
             return
         version = await self.push_screen_wait(
-            ChoiceScreen("Choose a Factorio version:", [(v, v) for v in versions])
+            ChoiceScreen(
+                "Choose a Factorio version:",
+                [(v, v) for v in versions],
+                default=self.storage.get("version"),
+            )
         )
         if version is None:
             return
+        self.storage.store("version", version)
 
         slots = list(self.session.saves.values())
         if not slots:
@@ -234,11 +253,14 @@ class FzManagerApp(App):
             return
         slot = await self.push_screen_wait(
             ChoiceScreen(
-                "Choose a save slot:", [(desc, str(i + 1)) for i, desc in enumerate(slots)]
+                "Choose a save slot:",
+                [(desc, str(i + 1)) for i, desc in enumerate(slots)],
+                default=self.storage.get("slot"),
             )
         )
         if slot is None:
             return
+        self.storage.store("slot", slot)
 
         confirmed = await self.push_screen_wait(
             ConfirmScreen(f"Start server in '{region}', version {version}, slot {slot}?")
@@ -254,6 +276,7 @@ class FzManagerApp(App):
             self.push_log(
                 Term.info("[start server]", f"Server running at {self.session.server_address}")
             )
+            self.storage.persist()
         except Exception as ex:  # noqa: BLE001 - report, don't crash the TUI
             self.push_log(Term.error("[start server]", str(ex)))
 
@@ -272,6 +295,12 @@ class FzManagerApp(App):
 
     async def action_quit(self) -> None:
         self.session.remove_logs_listener(self.push_log)
+        if self.session.user_token:
+            # `session.user_token` is only set once the WS `visit` handler's
+            # login round-trip completes (see session.py), so it may still
+            # be unset on a very early quit -- nothing to persist then.
+            self.storage.store("userToken", self.session.user_token)
+        self.storage.persist()
         self.exit()
 
 
