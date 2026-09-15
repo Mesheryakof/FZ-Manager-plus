@@ -196,7 +196,7 @@ class FzManagerApp(App):
 
     @work(exclusive=False, group="delete-mod")
     async def delete_mod_flow(self, mod_id: int) -> None:
-        name = next((m["text"] for m in self.session.mods if m["id"] == mod_id), str(mod_id))
+        name = next((m.text for m in self.session.mods if m.id == mod_id), str(mod_id))
         confirmed = await self.push_screen_wait(ConfirmScreen(f"Delete mod '{name}'?"))
         if not confirmed:
             return
@@ -389,8 +389,8 @@ class FzManagerApp(App):
             self.push_log(Term.error("[manage mods]", "No uploaded mods found"))
             return
 
-        options = [(m["text"], str(m["id"])) for m in self.session.mods]
-        preselected = [str(m["id"]) for m in self.session.mods if m["enabled"]]
+        options = [(m.text, str(m.id)) for m in self.session.mods]
+        preselected = [str(m.id) for m in self.session.mods if m.enabled]
         selected = await self.push_screen_wait(
             MultiChoiceScreen("Enable/Disable mods:", options, preselected=preselected)
         )
@@ -411,7 +411,7 @@ class FzManagerApp(App):
             self.push_log(Term.error("[manage mods]", "No uploaded mods found"))
             return
 
-        options = [(m["text"], str(m["id"])) for m in self.session.mods]
+        options = [(m.text, str(m.id)) for m in self.session.mods]
         selected = await self.push_screen_wait(
             MultiChoiceScreen("Delete mods:", options, preselected=[])
         )

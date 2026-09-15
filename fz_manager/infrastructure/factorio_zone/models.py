@@ -25,11 +25,19 @@ class OptionsMessage(BaseModel):
     options: Any
 
 
+class ModEntry(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    id: int
+    text: str
+    enabled: bool
+
+
 class ModsMessage(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     type: Literal["mods"]
-    mods: list[Any]
+    mods: list[ModEntry]
 
 
 class IdleMessage(BaseModel):

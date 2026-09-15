@@ -6,6 +6,8 @@ from textual.message import Message
 from textual.widgets import SelectionList
 from textual.widgets.selection_list import Selection
 
+from fz_manager.infrastructure.factorio_zone.models import ModEntry
+
 
 class ModsPane(Vertical):
     DEFAULT_CSS = """
@@ -34,13 +36,13 @@ class ModsPane(Vertical):
             self.mods_pane = mods_pane
             self.mod_id = mod_id
 
-    def __init__(self, mods: list[dict] | None = None, **kwargs) -> None:
+    def __init__(self, mods: list[ModEntry] | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._mods = list(mods or [])
 
     @staticmethod
-    def _build_selections(mods: list[dict]) -> list[Selection]:
-        return [Selection(mod["text"], mod["id"], mod["enabled"]) for mod in mods]
+    def _build_selections(mods: list[ModEntry]) -> list[Selection]:
+        return [Selection(mod.text, mod.id, mod.enabled) for mod in mods]
 
     def compose(self) -> ComposeResult:
         yield SelectionList(*self._build_selections(self._mods))
@@ -49,7 +51,7 @@ class ModsPane(Vertical):
     def selection_list(self) -> SelectionList:
         return self.query_one(SelectionList)
 
-    def sync_mods(self, mods: list[dict]) -> None:
+    def sync_mods(self, mods: list[ModEntry]) -> None:
         if mods == self._mods:
             return
         self._mods = list(mods)

@@ -11,6 +11,7 @@ from fz_manager.infrastructure.factorio_zone.models import (
     IdleMessage,
     InfoMessage,
     LogMessage,
+    ModEntry,
     ModsMessage,
     OptionsMessage,
     RunningMessage,
@@ -43,7 +44,7 @@ class FactorioZoneSession:
         self.regions: dict = {}
         self.versions: dict = {}
         self.saves: dict = {}
-        self.mods: list = []
+        self.mods: list[ModEntry] = []
         self.slots: dict = {}
         self.running: bool = False
         self.server_status: str = ServerStatus.OFFLINE
