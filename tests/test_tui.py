@@ -1,6 +1,7 @@
 import asyncio
+from unittest.mock import patch
 
-from textual.app import App
+from textual.app import App, ComposeResult
 from textual.widgets import Input
 
 from fz_manager_plus.application.session import FactorioZoneSession
@@ -20,6 +21,7 @@ from fz_manager_plus.tui.components import (
     ModsPane,
     ModsUploadScreen,
     SavesPane,
+    StatusBar,
 )
 from tests.fakes import FakeAPI, FakeSocket, eventually, initial_messages
 
@@ -190,5 +192,35 @@ def test_quit_during_upload_cancels_jobs_and_closes_files(tmp_path):
         assert all(stream.closed for stream in streams)
         assert not app.session._operations
         assert api.closed == 1
+
+    asyncio.run(check())
+
+
+def test_status_bar_server_address_opens_steam_direct_connect():
+    class StatusBarApp(App):
+        def compose(self) -> ComposeResult:
+            yield StatusBar("", id="status-bar")
+
+    async def check():
+        app = StatusBarApp()
+        async with app.run_test() as pilot:
+            bar = app.query_one(StatusBar)
+            bar.update_status(3, "RUNNING", "1.2.3.4:34197")
+            await pilot.pause()
+            with patch("fz_manager_plus.tui.components.status_bar.webbrowser.open") as mock_open:
+                await pilot.click(bar, offset=(bar.visual.cell_length - 1, 0))
+                await pilot.pause()
+                mock_open.assert_called_once_with(
+                    "steam://run/427520//--mp-connect%201.2.3.4:34197/"
+                )
+
+                mock_open.reset_mock()
+                await pilot.click(bar, offset=(2, 0))
+                await pilot.pause()
+                mock_open.assert_not_called()
+
+            bar.update_status(None, "OFFLINE", None)
+            await pilot.pause()
+            assert "Server:" not in str(bar.content)
 
     asyncio.run(check())

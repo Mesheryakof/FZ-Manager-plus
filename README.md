@@ -24,6 +24,7 @@ Run `fzmp --help` to see settings and command-line options. Enter an existing Fa
 ## Available in the TUI
 
 - Start a server by choosing a region, version and save slot; stop a running server.
+- Click the server address in the status bar to launch Steam and join it directly (requires Steam and Factorio to be installed).
 - Send console commands from the log pane.
 - Upload missing ZIP mods from a folder, including nested folders, with per-file progress.
 - Enable, disable or delete mods; delete all uploaded mods after confirmation.
