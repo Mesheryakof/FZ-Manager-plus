@@ -4,6 +4,8 @@ from collections.abc import Callable, Coroutine
 from inspect import iscoroutinefunction
 from typing import Any
 
+from rich.text import Text
+
 from fz_manager_plus.infrastructure.factorio_zone.client import FactorioZoneAPI
 from fz_manager_plus.infrastructure.factorio_zone.models import (
     BlankMessage,
@@ -24,7 +26,7 @@ from fz_manager_plus.infrastructure.factorio_zone.models import (
 from fz_manager_plus.infrastructure.factorio_zone.socket import FactorioZoneSocket
 from fz_manager_plus.terminal import Term
 
-LogListener = Callable[[str], Coroutine[Any, Any, None] | None]
+LogListener = Callable[[str | Text], Coroutine[Any, Any, None] | None]
 
 
 class ServerStatus:
@@ -115,7 +117,7 @@ class FactorioZoneSession:
     def remove_logs_listener(self, listener: LogListener) -> None:
         self._log_listeners.remove(listener)
 
-    async def _emit_log(self, line: str | None) -> None:
+    async def _emit_log(self, line: str | Text | None) -> None:
         for listener in self._log_listeners:
             if iscoroutinefunction(listener):
                 await listener(line)

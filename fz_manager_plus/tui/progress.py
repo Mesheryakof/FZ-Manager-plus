@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from rich.text import Text
+
 from fz_manager_plus.terminal import Term
 
 
 def progress_logger(
-    log: Callable[[str], None], label: str, total: float | None
+    log: Callable[[str | Text], None], label: str, total: float | None
 ) -> Callable[[int], None]:
     """A progress callback for a single transfer that logs a text line at
     each 25% milestone -- used where there's no shared ProgressBar to

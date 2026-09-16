@@ -190,11 +190,10 @@ class FzManagerApp(App):
         except Exception as ex:  # noqa: BLE001
             self.push_log(Term.error("[connection error]", str(ex)))
 
-    def push_log(self, *log: str) -> None:
-        if not log:
+    def push_log(self, message: str | Text) -> None:
+        if not message:
             return
-        text = " ".join(log)
-        self.main_screen.query_one(LogPane).log_view.write(Text.from_ansi(text))
+        self.main_screen.query_one(LogPane).log_view.write(message)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "command-input":

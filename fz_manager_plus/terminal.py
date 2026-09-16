@@ -1,73 +1,31 @@
-import os
+from __future__ import annotations
 
-
-class Term:
-    HEAD = "\r\x1b[K"
-    RESET = "\x1b[0m"
-    RESET_FG = "\x1b[39m"
-    RESET_BG = "\x1b[49m"
-    ENDL = "\x1b[K"
-    F_RESET = "\x1b[0m\x1b]11;?\a\x1b[K"
-
-    @staticmethod
-    def cls():
-        os.system("cls" if os.name == "nt" else "clear")
-
-    @staticmethod
-    def fg(rgb: tuple[int, int, int]):
-        return f"\x1b[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
-
-    @staticmethod
-    def bg(rgb: tuple[int, int, int]):
-        return f"\x1b[48;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
-
-    @staticmethod
-    def colorize(
-        fg_color: tuple[int, int, int] = None,
-        bg_color: tuple[int, int, int] = None,
-        *text: str,
-        sep: str = " ",
-        end: str = RESET,
-    ) -> str:
-        if not fg_color and not bg_color:
-            return " ".join(text)
-        foreground = Term.fg(fg_color) if fg_color else ""
-        background = Term.bg(bg_color) if bg_color else ""
-        t = sep.join(text)
-        return background + foreground + t + end
-
-    @staticmethod
-    def debug(*text: str):
-        return Term.colorize(Colors.BLUE, None, *text)
-
-    @staticmethod
-    def info(*text: str):
-        return Term.colorize(Colors.GREEN, None, *text)
-
-    @staticmethod
-    def warn(*text: str):
-        return Term.colorize(Colors.ORANGE, None, *text)
-
-    @staticmethod
-    def error(*text: str):
-        return Term.colorize(Colors.RED, None, *text)
+from rich.text import Text
 
 
 class Colors:
-    FACTORIO_FG = 230, 145, 0
-    FACTORIO_BG = 43, 43, 43
-    GREEN = 51, 255, 0
-    RED = 255, 0, 0
-    BLUE = 30, 144, 255
-    ORANGE = 255, 165, 0
+    BLUE = "#1e90ff"
+    GREEN = "#33ff00"
+    ORANGE = "#ffa500"
+    RED = "#ff0000"
+
+
+class Term:
+    """Builds colored `rich.text.Text` labels for the TUI log pane, using
+    Rich's own styling instead of hand-rolled ANSI escape sequences."""
 
     @staticmethod
-    def rgb_to_hex(rgb: tuple[int, int, int]):
-        def clamp(x):
-            return max(0, min(x, 255))
+    def debug(*text: str) -> Text:
+        return Text(" ".join(text), style=Colors.BLUE)
 
-        return f"#{clamp(rgb[0]):02x}{clamp(rgb[1]):02x}{clamp(rgb[2]):02x}"
+    @staticmethod
+    def info(*text: str) -> Text:
+        return Text(" ".join(text), style=Colors.GREEN)
 
-    FACTORIO_FG_HEX = rgb_to_hex(FACTORIO_FG)
-    FACTORIO_BG_HEX = rgb_to_hex(FACTORIO_BG)
+    @staticmethod
+    def warn(*text: str) -> Text:
+        return Text(" ".join(text), style=Colors.ORANGE)
 
+    @staticmethod
+    def error(*text: str) -> Text:
+        return Text(" ".join(text), style=Colors.RED)

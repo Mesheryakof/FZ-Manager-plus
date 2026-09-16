@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from rich.text import Text
+
 from fz_manager_plus.config import Settings
 from fz_manager_plus.infrastructure.factorio_zone.session import FactorioZoneSession
 
@@ -17,6 +19,6 @@ class FlowHost(Protocol):
     settings: Settings
     session: FactorioZoneSession
 
-    def push_log(self, *log: str) -> None: ...
+    def push_log(self, message: str | Text) -> None: ...
 
     async def push_screen_wait(self, screen: Any) -> Any: ...
