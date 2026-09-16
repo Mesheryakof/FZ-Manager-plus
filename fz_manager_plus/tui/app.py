@@ -2,38 +2,33 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import re
 import traceback
-from collections.abc import Callable
 from datetime import datetime, timezone
 from enum import Enum
-from os import listdir, path
 
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Input
-from textual_fspicker import FileOpen, Filters, SelectDirectory
+from textual.widgets import Footer, Header, Input, ProgressBar
 
 from fz_manager_plus.config import CRASH_LOG_PATH, Settings, get_settings
-from fz_manager_plus.infrastructure.factorio_zone import mods
 from fz_manager_plus.infrastructure.factorio_zone.client import FactorioZoneAPI
 from fz_manager_plus.infrastructure.factorio_zone.session import FactorioZoneSession
 from fz_manager_plus.infrastructure.factorio_zone.socket import FactorioZoneSocket
 from fz_manager_plus.terminal import Term
 from fz_manager_plus.tui.components import (
-    ChoiceScreen,
-    ConfirmScreen,
     LogPane,
     MenuPane,
     ModsPane,
-    MultiChoiceScreen,
     SavesPane,
     SelectableList,
     StatusBar,
     TokenScreen,
 )
+from fz_manager_plus.tui.flows import ModFlows, SaveFlows, ServerFlows, SyncFlows
+from fz_manager_plus.tui.progress import TransferProgress
+
 
 class MenuAction(str, Enum):
     """Menu item labels, doubling as their SelectableList values -- `str`
@@ -54,7 +49,15 @@ STATIC_MENU_ITEMS = [
 
 
 class FzManagerApp(App):
-    TITLE = "Factorio Zone Manager"
+    """Textual glue only: composing widgets, dispatching events, and the
+    `@work` entry points Textual requires to live on the App itself (its
+    worker decorator asserts `self` is a DOMNode). The actual business
+    logic for each menu action lives in `tui.flows` -- plain classes that
+    depend on this app only through the narrow `FlowHost` protocol, so
+    they can be tested without booting the TUI.
+    """
+
+    TITLE = "Factorio Zone Manager PLUS"
 
     CSS = """
     Screen {
@@ -79,7 +82,11 @@ class FzManagerApp(App):
 
     #bottom-bar {
         dock: bottom;
-        height: 2;
+        height: auto;
+    }
+
+    #sync-progress {
+        width: 1fr;
     }
     """
 
@@ -93,6 +100,11 @@ class FzManagerApp(App):
         api = FactorioZoneAPI(self.settings)
         socket = FactorioZoneSocket(self.settings)
         self.session = FactorioZoneSession(api, socket)
+
+        self.server_flows = ServerFlows(self)
+        self.mod_flows = ModFlows(self)
+        self.save_flows = SaveFlows(self)
+        self.sync_flows = SyncFlows(self)
 
     def _handle_exception(self, error: Exception) -> None:
 
@@ -126,6 +138,9 @@ class FzManagerApp(App):
                 yield SavesPane(self.session.saves, id="saves-pane")
         with Vertical(id="bottom-bar"):
             yield StatusBar("", id="status-bar")
+            progress_bar = ProgressBar(id="sync-progress", show_eta=False)
+            progress_bar.display = False
+            yield progress_bar
             yield Footer()
 
     def on_mount(self) -> None:
@@ -179,17 +194,9 @@ class FzManagerApp(App):
         text = " ".join(log)
         self.main_screen.query_one(LogPane).log_view.write(Text.from_ansi(text))
 
-    @staticmethod
-    def _start_dir(remembered: str | None) -> str:
-        """Best starting directory for a file/folder picker given a
-        remembered setting -- which may itself be a directory, a file
-        inside one (e.g. the save previously uploaded), or unset."""
-        if not remembered:
-            return "."
-        if path.isdir(remembered):
-            return remembered
-        parent = path.dirname(remembered)
-        return parent if parent and path.isdir(parent) else "."
+    def start_transfer_progress(self, total: float) -> TransferProgress:
+        bar = self.main_screen.query_one("#sync-progress", ProgressBar)
+        return TransferProgress(bar, total)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "command-input":
@@ -235,535 +242,40 @@ class FzManagerApp(App):
 
     @work(group="toggle-mod")
     async def toggle_mod(self, mod_id: int, enabled: bool) -> None:
-        try:
-            await self.session.toggle_mod(mod_id, enabled)
-        except Exception as ex:  # noqa: BLE001
-            self.push_log(Term.error("[manage mods]", str(ex)))
+        await self.mod_flows.toggle(mod_id, enabled)
 
     def on_mods_pane_delete_requested(self, event: ModsPane.DeleteRequested) -> None:
         self.delete_mod_flow(event.mod_id)
 
     @work(exclusive=False, group="delete-mod")
     async def delete_mod_flow(self, mod_id: int) -> None:
-        name = next((m.text for m in self.session.mods if m.id == mod_id), str(mod_id))
-        confirmed = await self.push_screen_wait(ConfirmScreen(f"Delete mod '{name}'?"))
-        if not confirmed:
-            return
-        try:
-            await self.session.delete_mod(mod_id)
-            self.push_log(Term.info("[manage mods]", f"Deleted {name}"))
-        except Exception as ex:  # noqa: BLE001
-            self.push_log(Term.error("[manage mods]", str(ex)))
+        await self.mod_flows.delete(mod_id)
 
     def on_saves_pane_download_requested(self, event: SavesPane.DownloadRequested) -> None:
         self.download_save_slot_flow(event.slot)
 
     @work(exclusive=False, group="download-save")
     async def download_save_slot_flow(self, slot: str) -> None:
-        slot_index = int(slot.removeprefix("slot"))
-        description = self.session.saves.get(slot, "")
-        if description.endswith("(empty)"):
-            self.push_log(Term.error("[download save]", f"Slot {slot_index} is empty"))
-            return
-
-        selected = await self.push_screen_wait(
-            SelectDirectory(
-                location=self._start_dir(self.settings.saves_path),
-                title="Select download directory",
-            )
-        )
-        if selected is None:
-            return
-        directory = str(selected)
-        self.settings.saves_path = directory
-
-        size_match = re.search(r"(\d+\.\d+)MB", description)
-        expected_size = float(size_match[1]) * 1048576 if size_match else None
-        target = path.join(directory, f"slot{slot_index}.zip")
-        self.push_log(Term.info("[download save]", f"Downloading slot {slot_index}..."))
-        try:
-            await self.session.download_save_slot(
-                slot, target, self._progress_logger(f"[download save] slot {slot_index}", expected_size)
-            )
-            self.push_log(Term.info("[download save]", f"Slot {slot_index}: done"))
-        except Exception as ex:  # noqa: BLE001
-            self.push_log(Term.error("[download save]", str(ex)))
+        await self.save_flows.download(slot)
 
     def on_saves_pane_delete_requested(self, event: SavesPane.DeleteRequested) -> None:
         self.delete_save_slot_flow(event.slot)
 
     @work(exclusive=False, group="delete-save")
     async def delete_save_slot_flow(self, slot: str) -> None:
-        slot_index = int(slot.removeprefix("slot"))
-        description = self.session.saves.get(slot, "")
-        if description.endswith("(empty)"):
-            self.push_log(Term.error("[delete save]", f"Slot {slot_index} is already empty"))
-            return
-        confirmed = await self.push_screen_wait(
-            ConfirmScreen(f"Delete slot {slot_index} ({description})?")
-        )
-        if not confirmed:
-            return
-        try:
-            await self.session.delete_save_slot(slot)
-            self.push_log(Term.info("[delete save]", f"Deleted slot {slot_index}"))
-        except Exception as ex:  # noqa: BLE001
-            self.push_log(Term.error("[delete save]", str(ex)))
+        await self.save_flows.delete(slot)
 
     @work(exclusive=True, group="start-server")
     async def start_server_flow(self) -> None:
-        regions = sorted(self.session.regions.items())
-        if not regions:
-            self.push_log(Term.error("[start server]", "No regions available yet (still syncing?)"))
-            return
-        region = await self.push_screen_wait(
-            ChoiceScreen(
-                "Choose a region:",
-                [(f"{code} - {name}", code) for code, name in regions],
-                default=self.settings.region,
-            )
-        )
-        if region is None:
-            return
-        self.settings.region = region
-
-        versions = list(self.session.versions)
-        if not versions:
-            self.push_log(
-                Term.error("[start server]", "No versions available yet (still syncing?)")
-            )
-            return
-        version = await self.push_screen_wait(
-            ChoiceScreen(
-                "Choose a Factorio version:",
-                [(v, v) for v in versions],
-                default=self.settings.version,
-            )
-        )
-        if version is None:
-            return
-        self.settings.version = version
-
-        slots = list(self.session.saves.values())
-        if not slots:
-            self.push_log(
-                Term.error("[start server]", "No save slots available yet (still syncing?)")
-            )
-            return
-        slot = await self.push_screen_wait(
-            ChoiceScreen(
-                "Choose a save slot:",
-                [(desc, str(i + 1)) for i, desc in enumerate(slots)],
-                default=self.settings.slot,
-            )
-        )
-        if slot is None:
-            return
-        self.settings.slot = slot
-
-        confirmed = await self.push_screen_wait(
-            ConfirmScreen(f"Start server in '{region}', version {version}, slot {slot}?")
-        )
-        if not confirmed:
-            return
-
-        self.push_log(Term.info("[start server]", "Starting instance..."))
-        try:
-            await self.session.start_instance(region, version, f"slot{slot}")
-            while not self.session.running and not self.session.server_address:
-                await asyncio.sleep(1)
-            self.push_log(
-                Term.info("[start server]", f"Server running at {self.session.server_address}")
-            )
-        except Exception as ex:  # noqa: BLE001
-            self.push_log(Term.error("[start server]", str(ex)))
+        await self.server_flows.start()
 
     @work(exclusive=True, group="stop-server")
     async def stop_server_flow(self) -> None:
-        self.push_log(Term.info("[stop server]", "Stopping instance..."))
-        try:
-            await self.session.stop_instance()
-            while self.session.running:
-                await asyncio.sleep(1)
-            self.push_log(Term.info("[stop server]", "Instance stopped."))
-        except Exception as ex:  # noqa: BLE001
-            self.push_log(Term.error("[stop server]", str(ex)))
-
-    def _progress_logger(self, label: str, total: float | None) -> Callable[[int], None]:
-        reported: set[int] = set()
-
-        def on_progress(bytes_done: int) -> None:
-            if not total:
-                return
-            step = min(100, int(bytes_done * 100 / total) // 25 * 25)
-            if step and step not in reported:
-                reported.add(step)
-                self.push_log(Term.info(label, f"{step}%"))
-
-        return on_progress
-
-    async def _create_mod_settings(self) -> None:
-        selected = await self.push_screen_wait(
-            SelectDirectory(
-                location=self._start_dir(self.settings.mods_path),
-                title="Select mods folder",
-            )
-        )
-        if selected is None:
-            return
-        mods_folder = str(selected)
-        self.settings.mods_path = mods_folder
-
-        try:
-            mod_settings_zip_path = mods.create_mod_settings_zip(mods_folder)
-        except FileNotFoundError as ex:
-            self.push_log(Term.error("[manage mods]", str(ex)))
-            return
-        self.push_log(Term.info("[manage mods]", f"{mod_settings_zip_path} created"))
-
-    async def _upload_mods(self) -> None:
-        selected = await self.push_screen_wait(
-            SelectDirectory(
-                location=self._start_dir(self.settings.mods_path),
-                title="Select mods folder",
-            )
-        )
-        if selected is None:
-            return
-        mods_folder = str(selected)
-        self.settings.mods_path = mods_folder
-
-        root, zip_names = mods.list_zip_files(mods_folder)
-        if not zip_names:
-            self.push_log(Term.error("[upload mods]", "No mod found in folder"))
-            return
-
-        selected = await self.push_screen_wait(
-            MultiChoiceScreen(
-                "Choose mods to upload:", [(name, name) for name in zip_names], preselected=zip_names
-            )
-        )
-        if not selected:
-            return
-
-        for mod_file in mods.build_mod_files(root, selected):
-            self.push_log(Term.info("[upload mods]", f"Uploading {mod_file.name}..."))
-            try:
-                with open(mod_file.file_path, "rb") as fh:
-                    await self.session.upload_mod(
-                        mod_file.name,
-                        fh,
-                        mod_file.size,
-                        self._progress_logger(f"[upload mods] {mod_file.name}", mod_file.size),
-                    )
-                self.push_log(Term.info("[upload mods]", f"{mod_file.name}: done"))
-            except Exception as ex:  # noqa: BLE001
-                self.push_log(Term.error("[upload mods]", f"{mod_file.name}: {ex}"))
-
-    async def _toggle_mods(self) -> None:
-        if not self.session.mods:
-            self.push_log(Term.error("[manage mods]", "No uploaded mods found"))
-            return
-
-        options = [(m.text, str(m.id)) for m in self.session.mods]
-        preselected = [str(m.id) for m in self.session.mods if m.enabled]
-        selected = await self.push_screen_wait(
-            MultiChoiceScreen("Enable/Disable mods:", options, preselected=preselected)
-        )
-        if selected is None:
-            return
-
-        added = set(selected) - set(preselected)
-        removed = set(preselected) - set(selected)
-        for mod_id in added:
-            self.push_log(Term.info("[manage mods]", f"Enabling mod {mod_id}"))
-            await self.session.toggle_mod(int(mod_id), True)
-        for mod_id in removed:
-            self.push_log(Term.info("[manage mods]", f"Disabling mod {mod_id}"))
-            await self.session.toggle_mod(int(mod_id), False)
-
-    async def _delete_mods(self) -> None:
-        if not self.session.mods:
-            self.push_log(Term.error("[manage mods]", "No uploaded mods found"))
-            return
-
-        options = [(m.text, str(m.id)) for m in self.session.mods]
-        selected = await self.push_screen_wait(
-            MultiChoiceScreen("Delete mods:", options, preselected=[])
-        )
-        if not selected:
-            return
-        confirmed = await self.push_screen_wait(ConfirmScreen(f"Delete {len(selected)} mod(s)?"))
-        if not confirmed:
-            return
-        for mod_id in selected:
-            self.push_log(Term.info("[manage mods]", f"Deleting mod {mod_id}"))
-            await self.session.delete_mod(int(mod_id))
-
-    async def _upload_save(self) -> None:
-        selected = await self.push_screen_wait(
-            FileOpen(
-                location=self._start_dir(self.settings.saves_path),
-                title="Select save file",
-                filters=Filters(("Save archives (*.zip)", lambda p: p.suffix.lower() == ".zip")),
-            )
-        )
-        if selected is None:
-            return
-        file_path = str(selected)
-        self.settings.saves_path = file_path
-
-        slot_choice = await self.push_screen_wait(
-            ChoiceScreen("Choose a save slot:", [(f"slot {i}", str(i)) for i in range(1, 10)])
-        )
-        if slot_choice is None:
-            return
-        slot_index = int(slot_choice)
-        slot_name = f"slot{slot_index}"
-
-        if self.session.is_save_slot_used(slot_index):
-            confirmed = await self.push_screen_wait(
-                ConfirmScreen(f"Slot {slot_index} is already used, do you want to replace it?")
-            )
-            if not confirmed:
-                return
-            await self.session.delete_save_slot(slot_name)
-
-        filename = path.basename(file_path)
-        size = path.getsize(file_path)
-        self.push_log(Term.info("[upload save]", f"Uploading {filename}..."))
-        try:
-            with open(file_path, "rb") as fh:
-                await self.session.upload_save(
-                    filename, fh, size, slot_name, self._progress_logger("[upload save]", size)
-                )
-            self.push_log(Term.info("[upload save]", "Done."))
-        except Exception as ex:  # noqa: BLE001
-            self.push_log(Term.error("[upload save]", str(ex)))
-
-    async def _delete_save(self) -> None:
-        slots = self.session.used_save_slots()
-        if not slots:
-            self.push_log(Term.error("[delete save]", "All the slots are empty"))
-            return
-
-        options = [(description, str(index)) for index, description in slots]
-        selected = await self.push_screen_wait(
-            MultiChoiceScreen("Select slots to delete:", options, preselected=[])
-        )
-        if not selected:
-            return
-        confirmed = await self.push_screen_wait(ConfirmScreen(f"Delete {len(selected)} slot(s)?"))
-        if not confirmed:
-            return
-
-        for slot_index in selected:
-            self.push_log(Term.info("[delete save]", f"Deleting slot {slot_index}"))
-            try:
-                await self.session.delete_save_slot(f"slot{slot_index}")
-            except Exception as ex:  # noqa: BLE001
-                self.push_log(Term.error("[delete save]", str(ex)))
-
-    async def _download_save(self) -> None:
-        slots = self.session.used_save_slots()
-        if not slots:
-            self.push_log(Term.error("[download save]", "All the slots are empty"))
-            return
-
-        options = [(description, str(index)) for index, description in slots]
-        selected = await self.push_screen_wait(
-            MultiChoiceScreen("Select slots to download:", options, preselected=[])
-        )
-        if not selected:
-            return
-
-        picked_dir = await self.push_screen_wait(
-            SelectDirectory(
-                location=self._start_dir(self.settings.saves_path),
-                title="Select download directory",
-            )
-        )
-        if picked_dir is None:
-            return
-        directory = str(picked_dir)
-        self.settings.saves_path = directory
-
-        descriptions = dict(slots)
-        for slot_index in selected:
-            slot_int = int(slot_index)
-            slot_name = f"slot{slot_int}"
-            description = descriptions.get(slot_int, "")
-            size_match = re.search(r"(\d+\.\d+)MB", description)
-            expected_size = float(size_match[1]) * 1048576 if size_match else None
-
-            target = path.join(directory, f"slot{slot_int}.zip")
-            self.push_log(Term.info("[download save]", f"Downloading slot {slot_int}..."))
-            try:
-                await self.session.download_save_slot(
-                    slot_name, target, self._progress_logger(f"[download save] slot {slot_int}", expected_size)
-                )
-                self.push_log(Term.info("[download save]", f"Slot {slot_int}: done"))
-            except Exception as ex:  # noqa: BLE001
-                self.push_log(Term.error("[download save]", str(ex)))
-
-    @staticmethod
-    def _local_save_files(folder: str) -> dict[str, str]:
-        """slot name -> file path, for `slotN.zip` files directly inside
-        `folder` -- the same naming _download_save()/download_save_slot_flow()
-        already write, used here symmetrically for matching on push/pull."""
-        files: dict[str, str] = {}
-        for entry in listdir(folder):
-            match = re.fullmatch(r"(slot\d+)\.zip", entry)
-            if match:
-                files[match.group(1)] = path.join(folder, entry)
-        return files
+        await self.server_flows.stop()
 
     @work(exclusive=True, group="sync")
     async def sync_flow(self) -> None:
-        """Push local mods/saves to the server, or pull saves back down.
-
-        Matching is by name only (mod filename <-> mod.text; save slot
-        number <-> local `slotN.zip`), no content/size comparison -- and
-        only ever fills gaps, never deletes or overwrites. Mods have no
-        download endpoint (FactorioZoneAPI has upload_mod/toggle_mod/
-        delete_mod, no download_mod), so pulling only ever applies to
-        saves; mods sync is push-only.
-        """
-        picked_mods_dir = await self.push_screen_wait(
-            SelectDirectory(
-                location=self._start_dir(self.settings.mods_path),
-                title="Select mods folder",
-            )
-        )
-        if picked_mods_dir is None:
-            return
-        mods_folder = str(picked_mods_dir)
-        self.settings.mods_path = mods_folder
-
-        picked_saves_dir = await self.push_screen_wait(
-            SelectDirectory(
-                location=self._start_dir(self.settings.saves_path),
-                title="Select saves folder",
-            )
-        )
-        if picked_saves_dir is None:
-            return
-        saves_folder = str(picked_saves_dir)
-        self.settings.saves_path = saves_folder
-
-        direction = await self.push_screen_wait(
-            ChoiceScreen(
-                "Sync direction:",
-                [
-                    ("Push to server (local -> server)", "push"),
-                    ("Pull from server (server -> local, saves only)", "pull"),
-                ],
-            )
-        )
-        if direction is None:
-            return
-
-        if direction == "push":
-            await self._sync_push(mods_folder, saves_folder)
-        else:
-            await self._sync_pull(saves_folder)
-
-    async def _sync_push(self, mods_folder: str, saves_folder: str) -> None:
-        root, zip_names = mods.list_zip_files(mods_folder)
-        remote_mod_names = {m.text for m in self.session.mods}
-        missing_mods = [name for name in zip_names if name not in remote_mod_names]
-
-        local_saves = self._local_save_files(saves_folder)
-        missing_saves = {
-            slot: file_path
-            for slot, file_path in local_saves.items()
-            if self.session.saves.get(slot, "").endswith("(empty)")
-        }
-        occupied_saves = [
-            slot
-            for slot in local_saves
-            if slot not in missing_saves and not self.session.saves.get(slot, "").endswith("(empty)")
-        ]
-
-        if not missing_mods and not missing_saves:
-            self.push_log(Term.info("[sync]", "Nothing to push -- server already has everything."))
-            return
-
-        confirmed = await self.push_screen_wait(
-            ConfirmScreen(
-                f"Push {len(missing_mods)} mod(s) and {len(missing_saves)} save(s) to the server?"
-            )
-        )
-        if not confirmed:
-            return
-
-        for name in missing_mods:
-            file_path = path.join(root, name)
-            size = path.getsize(file_path)
-            self.push_log(Term.info("[sync]", f"Uploading mod {name}..."))
-            try:
-                with open(file_path, "rb") as fh:
-                    await self.session.upload_mod(
-                        name, fh, size, self._progress_logger(f"[sync] {name}", size)
-                    )
-                self.push_log(Term.info("[sync]", f"{name}: done"))
-            except Exception as ex:  # noqa: BLE001
-                self.push_log(Term.error("[sync]", f"{name}: {ex}"))
-
-        for slot, file_path in missing_saves.items():
-            filename = path.basename(file_path)
-            size = path.getsize(file_path)
-            self.push_log(Term.info("[sync]", f"Uploading save {filename} to {slot}..."))
-            try:
-                with open(file_path, "rb") as fh:
-                    await self.session.upload_save(
-                        filename, fh, size, slot, self._progress_logger(f"[sync] {slot}", size)
-                    )
-                self.push_log(Term.info("[sync]", f"{slot}: done"))
-            except Exception as ex:  # noqa: BLE001
-                self.push_log(Term.error("[sync]", f"{slot}: {ex}"))
-
-        for slot in occupied_saves:
-            self.push_log(
-                Term.warn("[sync]", f"{slot} already has a save on the server -- skipped, not overwritten")
-            )
-
-    async def _sync_pull(self, saves_folder: str) -> None:
-        self.push_log(
-            Term.info(
-                "[sync]", "Mods have no download endpoint on the server -- skipping mods."
-            )
-        )
-
-        local_saves = self._local_save_files(saves_folder)
-        missing_locally = {
-            slot: description
-            for slot, description in self.session.saves.items()
-            if not description.endswith("(empty)") and slot not in local_saves
-        }
-
-        if not missing_locally:
-            self.push_log(Term.info("[sync]", "Nothing to pull -- local folder already has everything."))
-            return
-
-        confirmed = await self.push_screen_wait(
-            ConfirmScreen(f"Pull {len(missing_locally)} save(s) from the server?")
-        )
-        if not confirmed:
-            return
-
-        for slot, description in missing_locally.items():
-            size_match = re.search(r"(\d+\.\d+)MB", description)
-            expected_size = float(size_match[1]) * 1048576 if size_match else None
-            target = path.join(saves_folder, f"{slot}.zip")
-            self.push_log(Term.info("[sync]", f"Downloading {slot}..."))
-            try:
-                await self.session.download_save_slot(
-                    slot, target, self._progress_logger(f"[sync] {slot}", expected_size)
-                )
-                self.push_log(Term.info("[sync]", f"{slot}: done"))
-            except Exception as ex:  # noqa: BLE001
-                self.push_log(Term.error("[sync]", f"{slot}: {ex}"))
+        await self.sync_flows.run()
 
     async def action_quit(self) -> None:
         self.session.remove_logs_listener(self.push_log)

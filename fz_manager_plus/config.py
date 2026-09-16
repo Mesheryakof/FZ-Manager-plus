@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     theme: str = 'gruvbox'
     max_mod_size: int = 268_435_456  # 256MB
     max_save_size: int = 100_663_296  # 96MB
+    sync_batch_size: int = 3  # concurrent uploads/downloads during mod/save sync
     ws_ping_interval: float = 30
     ws_ping_timeout: float = 10
     storage_dir: Path | None = None
