@@ -58,14 +58,51 @@ CLI options override environment variables; environment variables override `.env
 
 ```sh
 uv sync --group dev
-uv run pytest -q
+```
+
+### Checkers
+
+Each command only reports; none of them rewrite files. Run before pushing — this is the same set of checks GitHub Actions runs on a pull request, so a green run locally means a green PR:
+
+```sh
 uv run ruff check fz_manager_plus tests
 uv run ruff format --check fz_manager_plus tests
+uv run isort --check-only fz_manager_plus tests
+uv run pytest -q
 ```
 
 Tests use fake transports and temporary directories; they do not call Factorio Zone.
 
 The composition root is `fz_manager_plus/runtime.py`. `domain` defines state and messages, `application` owns session/transfer workflows, `infrastructure` implements transports and archive utilities, and `tui` contains Textual views and user interaction. Rich styling stays at the UI boundary in `terminal.py`.
+
+### CI
+
+`.github/workflows/ci.yml` runs `lint`, `format` and `test` as separate jobs on every pull request targeting `main`. Every job fails the check instead of auto-fixing, and `uv sync --group dev --locked` also fails the job if `uv.lock` is out of date.
+
+### Releasing a new version
+
+Versions are bumped in place with [`uv version --bump`](https://docs.astral.sh/uv/concepts/projects/config/#project-version), which updates `pyproject.toml` (and re-locks `uv.lock`):
+
+```sh
+uv version --bump patch                # 0.1.1 -> 0.1.2
+uv version --bump minor                # 0.1.1 -> 0.2.0
+uv version --bump major                # 0.1.1 -> 1.0.0
+uv version --bump patch --bump dev     # 0.1.1 -> 0.1.2.dev1 (pre-release/dev build)
+```
+
+Commit the result and tag it to trigger a release:
+
+```sh
+git add pyproject.toml uv.lock
+git commit -m "chore(release): bump version to v$(uv version --short)"
+git tag "v$(uv version --short)"
+git push origin main --tags
+```
+
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds the sdist/wheel with `uv build`, verifies the tag matches `pyproject.toml`, and publishes to PyPI with `uv publish` using [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (no stored token). `dev` pre-releases go through the same workflow; PyPI treats them as pre-releases, installable with `pip install --pre`.
+
+One-time setup: create a `pypi` environment in the repository's GitHub settings, and register this repository/workflow/environment as a Trusted Publisher for `fz-manager-plus` on PyPI.
+
 
 ## Screenshot
 ![](assets/img.png?raw=true "FactorioZone Manager Plus")
