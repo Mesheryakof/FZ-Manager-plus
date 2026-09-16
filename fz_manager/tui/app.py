@@ -188,7 +188,7 @@ class FzManagerApp(App):
         if self.session.launch_id is None:
             self.push_log(Term.error("COMMAND:", "No running server to attach to."))
             return
-        self.push_log(Term.info("COMMAND:", text))
+        self.push_log(Term.info("Sent command:", text))
         self.send_command(text)
 
     @work(group="send-command")
