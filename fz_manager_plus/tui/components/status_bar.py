@@ -17,7 +17,6 @@ class StatusBar(Static):
         self, launch_id: int | None, server_status: str, server_address: str | None
     ) -> None:
         parts = [
-            "Trial: N/A",
             f"Launch ID: {launch_id if launch_id is not None else '-'}",
             f"Status: {server_status}",
         ]
