@@ -129,6 +129,7 @@ class FzManagerApp(App):
             yield Footer()
 
     def on_mount(self) -> None:
+        self.theme = self.settings.theme
         self.session.add_logs_listener(self.push_log)
         self.set_interval(1, self._refresh_status_bar)
         self.set_interval(1, self._refresh_menu)

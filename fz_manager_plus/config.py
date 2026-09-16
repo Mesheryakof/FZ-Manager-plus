@@ -16,6 +16,7 @@ CRASH_LOG_PATH = _STATE_DIR / "crash.log"
 
 class Settings(BaseSettings):
     factorio_zone_endpoint: str = "factorio.zone"
+    theme: str = 'gruvbox'
     max_mod_size: int = 268_435_456  # 256MB
     max_save_size: int = 100_663_296  # 96MB
     ws_ping_interval: float = 30
