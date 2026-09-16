@@ -11,6 +11,7 @@ from fz_manager_plus.tui.components.saves_pane import SavesPane
 from fz_manager_plus.tui.components.selectable_list import SelectableList
 from fz_manager_plus.tui.components.status_bar import StatusBar
 from fz_manager_plus.tui.components.token_screen import TokenScreen
+from fz_manager_plus.tui.components.version_label import VersionLabel
 
 # SelectionList (ModsPane, MultiChoiceScreen) hardcodes its checkbox glyph
 # via ToggleButton.BUTTON_INNER, referenced directly by class (not `self`)
@@ -32,4 +33,5 @@ __all__ = [
     "StatusBar",
     "TokenScreen",
     "UploadItem",
+    "VersionLabel",
 ]

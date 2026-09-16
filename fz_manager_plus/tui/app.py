@@ -32,6 +32,7 @@ from fz_manager_plus.tui.components import (
     SelectableList,
     StatusBar,
     TokenScreen,
+    VersionLabel,
 )
 from fz_manager_plus.tui.flows import ModFlows, SaveFlows, ServerFlows, SyncFlows
 
@@ -100,6 +101,14 @@ class FzManagerApp(App):
         dock: bottom;
         height: 2;
     }
+
+    #status-row {
+        height: 1;
+    }
+
+    #status-bar {
+        width: 1fr;
+    }
     """
 
     BINDINGS = [
@@ -161,7 +170,9 @@ class FzManagerApp(App):
                 yield SavesPane(self.session.saves, id="saves-pane")
                 yield ModsPane(self.session.mods, id="mods-pane")
         with Vertical(id="bottom-bar"):
-            yield StatusBar("", id="status-bar")
+            with Horizontal(id="status-row"):
+                yield StatusBar("", id="status-bar")
+                yield VersionLabel()
             yield Footer()
 
     def on_mount(self) -> None:
