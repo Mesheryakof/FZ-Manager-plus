@@ -1,3 +1,9 @@
+## v0.5.0 (2026-09-16)
+
+### Feat
+
+- persist the log pane to server.log
+
 ## v0.4.0 (2026-09-16)
 
 ### Feat

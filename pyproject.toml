@@ -1,6 +1,6 @@
 [project]
 name = "fz-manager-plus"
-version = "0.4.0"
+version = "0.5.0"
 description = "Factorio Zone Server Manager"
 authors = [
     { name = "michelsciortino", email = "michel.sciortino@outlook.com" },
