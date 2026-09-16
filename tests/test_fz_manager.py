@@ -1,6 +1,6 @@
 from importlib.metadata import version
 
-from fz_manager import __version__
+from fz_manager_plus import __version__
 
 
 def test_version():

@@ -2,9 +2,9 @@ from collections.abc import Callable
 
 import httpx
 
-from fz_manager.config import Settings, get_settings
-from fz_manager.infrastructure.factorio_zone.models import LoginResponse
-from fz_manager.utils.api_router.http import ApiRouterHttp, UploadProgressFile
+from fz_manager_plus.config import Settings, get_settings
+from fz_manager_plus.infrastructure.factorio_zone.models import LoginResponse
+from fz_manager_plus.utils.api_router.http import ApiRouterHttp, UploadProgressFile
 
 router = ApiRouterHttp(
     client=httpx.AsyncClient(

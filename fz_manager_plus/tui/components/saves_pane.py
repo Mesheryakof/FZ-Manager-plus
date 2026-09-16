@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.message import Message
 
-from fz_manager.tui.components.selectable_list import SelectableList
+from fz_manager_plus.tui.components.selectable_list import SelectableList
 
 
 class SavesPane(Vertical):

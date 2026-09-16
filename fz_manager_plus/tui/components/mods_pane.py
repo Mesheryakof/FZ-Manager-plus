@@ -7,7 +7,7 @@ from textual.message import Message
 from textual.widgets import SelectionList
 from textual.widgets.selection_list import Selection
 
-from fz_manager.infrastructure.factorio_zone.models import ModEntry
+from fz_manager_plus.infrastructure.factorio_zone.models import ModEntry
 
 
 class ModsPane(Vertical):

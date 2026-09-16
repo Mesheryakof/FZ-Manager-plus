@@ -15,13 +15,13 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Input
 
-from fz_manager.config import CRASH_LOG_PATH, Settings, get_settings
-from fz_manager.infrastructure.factorio_zone import mods
-from fz_manager.infrastructure.factorio_zone.client import FactorioZoneAPI
-from fz_manager.infrastructure.factorio_zone.session import FactorioZoneSession
-from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
-from fz_manager.terminal import Term
-from fz_manager.tui.components import (
+from fz_manager_plus.config import CRASH_LOG_PATH, Settings, get_settings
+from fz_manager_plus.infrastructure.factorio_zone import mods
+from fz_manager_plus.infrastructure.factorio_zone.client import FactorioZoneAPI
+from fz_manager_plus.infrastructure.factorio_zone.session import FactorioZoneSession
+from fz_manager_plus.infrastructure.factorio_zone.socket import FactorioZoneSocket
+from fz_manager_plus.terminal import Term
+from fz_manager_plus.tui.components import (
     ChoiceScreen,
     ConfirmScreen,
     LogPane,

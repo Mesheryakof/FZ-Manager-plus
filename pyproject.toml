@@ -22,8 +22,8 @@ dependencies = [
 repository = "https://github.com/Mesheryakof/FZ-Manager"
 
 [project.scripts]
-fzmp = "fz_manager.cli:main"
-fz-manager-plus = "fz_manager.cli:main"
+fzmp = "fz_manager_plus.cli:main"
+fz-manager-plus = "fz_manager_plus.cli:main"
 
 [dependency-groups]
 dev = [
@@ -34,7 +34,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["fz_manager"]
+packages = ["fz_manager_plus"]
 
 [build-system]
 requires = ["hatchling"]
@@ -54,4 +54,4 @@ ignore = ["E501"]
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["fz_manager"]
+known_first_party = ["fz_manager_plus"]

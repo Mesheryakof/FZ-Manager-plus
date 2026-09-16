@@ -4,8 +4,8 @@ from collections.abc import Callable, Coroutine
 from inspect import iscoroutinefunction
 from typing import Any
 
-from fz_manager.infrastructure.factorio_zone.client import FactorioZoneAPI
-from fz_manager.infrastructure.factorio_zone.models import (
+from fz_manager_plus.infrastructure.factorio_zone.client import FactorioZoneAPI
+from fz_manager_plus.infrastructure.factorio_zone.models import (
     BlankMessage,
     ErrorMessage,
     IdleMessage,
@@ -21,8 +21,8 @@ from fz_manager.infrastructure.factorio_zone.models import (
     VisitMessage,
     WarnMessage, ConsoleMessage,
 )
-from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
-from fz_manager.terminal import Term
+from fz_manager_plus.infrastructure.factorio_zone.socket import FactorioZoneSocket
+from fz_manager_plus.terminal import Term
 
 LogListener = Callable[[str], Coroutine[Any, Any, None] | None]
 

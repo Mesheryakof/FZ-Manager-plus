@@ -5,7 +5,7 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
-from fz_manager.tui.components.selectable_list import SelectableList
+from fz_manager_plus.tui.components.selectable_list import SelectableList
 
 
 class ChoiceScreen(ModalScreen[str | None]):

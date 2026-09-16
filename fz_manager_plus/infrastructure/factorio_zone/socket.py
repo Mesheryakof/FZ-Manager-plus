@@ -4,9 +4,9 @@ import ssl
 import certifi
 from pydantic import ValidationError
 
-from fz_manager.config import Settings
-from fz_manager.infrastructure.factorio_zone.models import BlankMessage, FzMessage
-from fz_manager.utils.api_router.ws import WebSocketClient
+from fz_manager_plus.config import Settings
+from fz_manager_plus.infrastructure.factorio_zone.models import BlankMessage, FzMessage
+from fz_manager_plus.utils.api_router.ws import WebSocketClient
 
 
 def _to_blank_message(raw: bytes, error: ValidationError) -> BlankMessage:  # noqa: ARG001

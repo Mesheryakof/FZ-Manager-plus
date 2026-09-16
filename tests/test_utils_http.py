@@ -4,7 +4,7 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
-from fz_manager.utils.api_router.http import ApiError, ApiRouterHttp, DecodeError
+from fz_manager_plus.utils.api_router.http import ApiError, ApiRouterHttp, DecodeError
 
 
 class Widget(BaseModel):
