@@ -28,7 +28,9 @@ class TokenScreen(ModalScreen[str]):
     def compose(self) -> ComposeResult:
         with Vertical(id="token-dialog"):
             yield Static("Enter your factorio.zone user token (leave empty for a new one):")
-            yield Input(value=self._default, placeholder="user token", password=True, id="token-input")
+            yield Input(
+                value=self._default, placeholder="user token", password=True, id="token-input"
+            )
 
     def on_mount(self) -> None:
         self.query_one("#token-input", Input).focus()

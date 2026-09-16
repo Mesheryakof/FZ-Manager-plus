@@ -26,8 +26,19 @@ class SelectableList(ListView):
     async def sync_options(self, options: list[tuple[str, str]]) -> None:
         if options == self._options:
             return
+        index = self.index
+        value = (
+            self.children[index].name if index is not None and index < len(self.children) else None
+        )
+        focused, scroll_y = self.has_focus, self.scroll_y
         self._options = list(options)
         await self.recompose()
+        self.index = self.index_of(value) if value is not None else None
+        if self.index is None and options:
+            self.index = 0
+        self.call_after_refresh(self.scroll_to, y=scroll_y, animate=False, force=True)
+        if focused:
+            self.focus(scroll_visible=False)
 
     def index_of(self, value: str) -> int | None:
         for index, (_, option_value) in enumerate(self._options):

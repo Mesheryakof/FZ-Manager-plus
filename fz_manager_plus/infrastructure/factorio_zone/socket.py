@@ -5,22 +5,22 @@ import certifi
 from pydantic import ValidationError
 
 from fz_manager_plus.config import Settings
-from fz_manager_plus.infrastructure.factorio_zone.models import BlankMessage, FzMessage
+from fz_manager_plus.domain.messages import BlankMessage, FzMessage
 from fz_manager_plus.utils.api_router.ws import WebSocketClient
 
 
-def _to_blank_message(raw: bytes, error: ValidationError) -> BlankMessage:  # noqa: ARG001
+def _to_blank_message(raw: str | bytes, error: ValidationError) -> BlankMessage:  # noqa: ARG001
     try:
         data = json.loads(raw)
         if not isinstance(data, dict):
             data = {}
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         data = {}
     data["type"] = str(data.get("type", "unknown"))
     return BlankMessage.model_validate(data)
 
 
-class FactorioZoneSocket(WebSocketClient):
+class FactorioZoneSocket(WebSocketClient[FzMessage | BlankMessage]):
     def __init__(self, settings: Settings):
         self.settings = settings
         ssl_context = ssl.create_default_context(cafile=certifi.where())

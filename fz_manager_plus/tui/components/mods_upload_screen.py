@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 
 from rich.text import Text
 from textual import work
@@ -10,18 +9,10 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, ProgressBar, Static
 
-from fz_manager_plus.utils.concurrency import run_batched
+from fz_manager_plus.domain.state import TransferEvent, TransferProgress, TransferResult
+from fz_manager_plus.domain.state import UploadItem as UploadItem
 
-
-@dataclass
-class UploadItem:
-    """One row in `ModsUploadScreen`: `label` is shown to the user, `size`
-    sizes the row's progress bar (0 for unknown), and `upload` performs the
-    actual transfer given a `bytes_done` progress callback."""
-
-    label: str
-    size: int
-    upload: Callable[[Callable[[int], None]], Awaitable[None]]
+type UploadRunner = Callable[[Callable[[TransferEvent], None]], Awaitable[list[str]]]
 
 
 class ModsUploadScreen(ModalScreen[list[str] | None]):
@@ -79,11 +70,11 @@ class ModsUploadScreen(ModalScreen[list[str] | None]):
     }
     """
 
-    def __init__(self, title: str, items: list[UploadItem], batch_size: int) -> None:
+    def __init__(self, title: str, items: list[UploadItem], run_uploads: UploadRunner) -> None:
         super().__init__()
         self._title = title
         self._items = items
-        self._batch_size = batch_size
+        self._run_batch = run_uploads
         self._labels: list[Static] = []
         self._bars: list[ProgressBar] = []
         self._failed: list[str] = []
@@ -114,9 +105,9 @@ class ModsUploadScreen(ModalScreen[list[str] | None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         event.stop()
-        if event.button.id == "cancel":
+        if event.button.id == "cancel" and not self._started:
             self.dismiss(None)
-        elif event.button.id == "close":
+        elif event.button.id == "close" and self._finished:
             self.dismiss(self._failed)
         elif event.button.id == "confirm" and not self._started:
             self._started = True
@@ -133,27 +124,32 @@ class ModsUploadScreen(ModalScreen[list[str] | None]):
 
     @work(exclusive=True)
     async def _run_uploads(self) -> None:
-        async def run_one(index: int) -> None:
-            item = self._items[index]
-            bar = self._bars[index]
-            label = self._labels[index]
-            try:
-                await item.upload(lambda bytes_done: bar.update(progress=bytes_done))
-                bar.update(progress=item.size or bar.progress)
-                label.update(Text(f"{item.label} ✓", no_wrap=True, overflow="ellipsis"))
-            except Exception as ex:  # noqa: BLE001
-                self._failed.append(item.label)
-                label.update(
-                    Text(
-                        f"{item.label} ✗ {ex}",
-                        style="bold red",
-                        no_wrap=True,
-                        overflow="ellipsis",
-                    )
-                )
-
-        jobs = [(lambda i=i: run_one(i)) for i in range(len(self._items))]
-        await run_batched(jobs, self._batch_size)
-
+        try:
+            self._failed = await self._run_batch(self._on_transfer)
+        except Exception as error:
+            self._failed = [item.label for item in self._items]
+            for index in range(len(self._items)):
+                self._on_transfer(TransferResult(index, str(error) or type(error).__name__))
         self._finished = True
         self.query_one("#close", Button).display = True
+
+    def _on_transfer(self, event: TransferEvent) -> None:
+        item, bar, label = (
+            self._items[event.index],
+            self._bars[event.index],
+            self._labels[event.index],
+        )
+        if isinstance(event, TransferProgress):
+            bar.update(progress=event.bytes_done)
+        elif event.error is None:
+            bar.update(progress=item.size)
+            label.update(Text(f"{item.label} ✓", no_wrap=True, overflow="ellipsis"))
+        else:
+            label.update(
+                Text(
+                    f"{item.label} ✗ {event.error}",
+                    style="bold red",
+                    no_wrap=True,
+                    overflow="ellipsis",
+                )
+            )

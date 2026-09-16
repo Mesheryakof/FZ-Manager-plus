@@ -1,16 +1,17 @@
-from __future__ import annotations
-
 import asyncio
-from collections.abc import Callable, Coroutine
-from typing import Any
+from collections.abc import Awaitable, Callable
 
 
-async def run_batched(jobs: list[Callable[[], Coroutine[Any, Any, None]]], batch_size: int) -> None:
-    """Run `jobs` concurrently, at most `batch_size` in flight at once."""
-    semaphore = asyncio.Semaphore(max(1, batch_size))
+async def run_batched(jobs: list[Callable[[], Awaitable[None]]], batch_size: int) -> None:
+    """Bound both active jobs and task count; cancellation joins every worker."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
+    pending = iter(jobs)
 
-    async def run(job: Callable[[], Coroutine[Any, Any, None]]) -> None:
-        async with semaphore:
+    async def consume() -> None:
+        for job in pending:
             await job()
 
-    await asyncio.gather(*(run(job) for job in jobs))
+    async with asyncio.TaskGroup() as group:
+        for _ in range(min(batch_size, len(jobs))):
+            group.create_task(consume())

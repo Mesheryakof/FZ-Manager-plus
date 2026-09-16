@@ -5,7 +5,6 @@ description = "Factorio Zone Server Manager"
 authors = [
     { name = "michelsciortino", email = "michel.sciortino@outlook.com" },
     { name = "Mesheryakof", email = "danil.spb.it@gmail.com" },
-
 ]
 requires-python = ">=3.14"
 dependencies = [
@@ -20,7 +19,7 @@ dependencies = [
 ]
 
 [project.urls]
-repository = "https://github.com/Mesheryakof/FZ-Manager"
+repository = "https://github.com/Mesheryakof/FZ-Manager-Plus"
 
 [project.scripts]
 fzmp = "fz_manager_plus.cli:main"

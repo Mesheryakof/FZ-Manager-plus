@@ -27,7 +27,9 @@ class LogPane(Vertical):
         self.border_title = "Logs"
 
     def compose(self) -> ComposeResult:
-        log_view = RichLog(id="log-view", wrap=False, highlight=False, markup=False)
+        log_view = RichLog(
+            id="log-view", wrap=False, highlight=False, markup=False, max_lines=10_000
+        )
         log_view.can_focus = False
         yield log_view
         yield Input(placeholder="Type a message and press Enter...", id="command-input")

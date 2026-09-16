@@ -1,3 +1,5 @@
+"""Validated Factorio Zone messages shared by transport and application."""
+
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field

@@ -7,7 +7,7 @@ from textual.message import Message
 from textual.widgets import SelectionList
 from textual.widgets.selection_list import Selection
 
-from fz_manager_plus.infrastructure.factorio_zone.models import ModEntry
+from fz_manager_plus.domain.state import Mod
 
 
 class ModsPane(Vertical):
@@ -37,12 +37,12 @@ class ModsPane(Vertical):
             self.mods_pane = mods_pane
             self.mod_id = mod_id
 
-    def __init__(self, mods: list[ModEntry] | None = None, **kwargs) -> None:
+    def __init__(self, mods: list[Mod] | tuple[Mod, ...] | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._mods = list(mods or [])
 
     @staticmethod
-    def _build_selections(mods: list[ModEntry]) -> list[Selection]:
+    def _build_selections(mods: list[Mod]) -> list[Selection]:
         # no_wrap+ellipsis: SelectionList.render_line() maps a rendered row
         # to an option via `scroll_y + y`, assuming exactly one row per
         # option -- a mod name long enough to wrap onto a second row breaks
@@ -64,9 +64,12 @@ class ModsPane(Vertical):
     def selection_list(self) -> SelectionList:
         return self.query_one(SelectionList)
 
-    async def sync_mods(self, mods: list[ModEntry]) -> None:
-        if mods == self._mods:
+    async def sync_mods(self, mods: list[Mod] | tuple[Mod, ...], *, force: bool = False) -> None:
+        if list(mods) == self._mods and not force:
             return
+        old = self.selection_list
+        focused, scroll_y, highlighted = old.has_focus, old.scroll_y, old.highlighted
+        value = old.get_option_at_index(highlighted).value if highlighted is not None else None
         self._mods = list(mods)
         # recompose(): Textual's own atomic "remove children, call compose()
         # again" primitive. clear_options()+add_options() (previously used
@@ -75,6 +78,13 @@ class ModsPane(Vertical):
         # rebuilds the whole SelectionList from scratch instead of patching
         # it in place, so there's no partial state to observe.
         await self.recompose()
+        current = self.selection_list
+        current.highlighted = next(
+            (i for i, mod in enumerate(self._mods) if mod.id == value), 0 if self._mods else None
+        )
+        current.call_after_refresh(current.scroll_to, y=scroll_y, animate=False, force=True)
+        if focused:
+            current.focus(scroll_visible=False)
 
     def on_selection_list_selection_toggled(self, event: SelectionList.SelectionToggled) -> None:
         event.stop()

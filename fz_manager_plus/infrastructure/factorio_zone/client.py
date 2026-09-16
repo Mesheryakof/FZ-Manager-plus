@@ -1,173 +1,194 @@
+import os
+import secrets
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
+from typing import BinaryIO
 
 import httpx
 
-from fz_manager_plus.config import Settings, get_settings
-from fz_manager_plus.infrastructure.factorio_zone.models import LoginResponse
-from fz_manager_plus.utils.api_router.http import ApiRouterHttp, UploadProgressFile
+from fz_manager_plus.config import Settings
+from fz_manager_plus.domain.errors import ApiError, AuthenticationError
+from fz_manager_plus.domain.messages import LoginResponse
+from fz_manager_plus.utils.api_router.http import ApiRouterHttp
+from fz_manager_plus.utils.async_io import blocking_io
 
-router = ApiRouterHttp(
-    client=httpx.AsyncClient(
-        base_url=f"https://{get_settings().factorio_zone_endpoint}",
-    )
-)
+
+class MultipartUpload(httpx.AsyncByteStream):
+    """Streaming multipart body with disk reads off the event loop."""
+
+    def __init__(self, fields: dict[str, str], name: str, file: BinaryIO, size: int, progress):
+        self.file, self.size, self.progress = file, size, progress
+        self.boundary = secrets.token_hex(16)
+        escaped_name = (
+            name.replace("\\", "\\\\").replace('"', "%22").replace("\r", "%0D").replace("\n", "%0A")
+        )
+        parts = [
+            f'--{self.boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'
+            for key, value in fields.items()
+        ]
+        parts.append(
+            f'--{self.boundary}\r\nContent-Disposition: form-data; name="file"; filename="{escaped_name}"\r\n'
+            "Content-Type: application/x-zip-compressed\r\n\r\n"
+        )
+        self.prefix = "".join(parts).encode()
+        self.suffix = f"\r\n--{self.boundary}--\r\n".encode()
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {
+            "Content-Type": f"multipart/form-data; boundary={self.boundary}",
+            "Content-Length": str(len(self.prefix) + self.size + len(self.suffix)),
+        }
+
+    async def __aiter__(self):
+        yield self.prefix
+        done = 0
+        while chunk := await blocking_io(self.file.read, 256 * 1024):
+            done += len(chunk)
+            if done > self.size:
+                raise ValueError("File size changed during upload")
+            yield chunk
+            if self.progress:
+                self.progress(done)
+        if done != self.size:
+            raise ValueError("File size changed during upload")
+        yield self.suffix
 
 
 class FactorioZoneAPI:
-    def __init__(self, settings: Settings, visit_secret: str | None = None):
+    """Owns its HTTP client, including an injected client, until aclose()."""
+
+    def __init__(self, settings: Settings, *, http: httpx.AsyncClient):
         self.settings = settings
-        self.visit_secret = visit_secret
+        self.visit_secret: str | None = None
+        self.user_token = settings.user_token
+        self.transport = ApiRouterHttp(http)
 
-    @router.endpoint(response_model=LoginResponse)
-    def login(self, reconnected: bool = False) -> httpx.Request:
-        return router.build_request(
-            method="POST",
-            path="/api/user/login",
-            data={
-                "userToken": self.settings.user_token,
-                "visitSecret": self.visit_secret,
-                "reconnected": reconnected,
-            },
+    def _request(self, path: str, **kwargs) -> httpx.Request:
+        return self.transport.build_request(
+            "POST", f"https://{self.settings.factorio_zone_endpoint}{path}", **kwargs
         )
 
-    @router.endpoint()
-    def toggle_mod(self, mod_id: int, enabled: bool) -> httpx.Request:
-        return router.build_request(
-            method="POST",
-            path="/api/mod/toggle",
-            data={
-                "visitSecret": self.visit_secret,
-                "modId": mod_id,
-                "enabled": enabled,
-            },
+    async def _post(self, path: str, **fields) -> None:
+        await self.transport.execute(
+            self._request(path, data={"visitSecret": self.visit_secret, **fields})
         )
 
-    @router.endpoint()
-    def delete_mod(self, mod_id: int) -> httpx.Request:
-        return router.build_request(
-            method="POST",
-            path="/api/mod/delete",
-            data={
-                "visitSecret": self.visit_secret,
-                "modId": mod_id,
-            },
+    async def login(self, reconnected: bool = False) -> LoginResponse:
+        try:
+            response = await self.transport.execute(
+                self._request(
+                    "/api/user/login",
+                    data={
+                        "userToken": self.user_token,
+                        "visitSecret": self.visit_secret,
+                        "reconnected": reconnected,
+                    },
+                ),
+                LoginResponse,
+            )
+        except ApiError as error:
+            if error.status_code in (401, 403):
+                raise AuthenticationError(
+                    "Authentication failed. Enter your user token again."
+                ) from error
+            raise
+        assert response is not None
+        self.user_token = response.user_token
+        return response
+
+    async def toggle_mod(self, mod_id: int, enabled: bool) -> None:
+        await self._post("/api/mod/toggle", modId=mod_id, enabled=enabled)
+
+    async def delete_mod(self, mod_id: int) -> None:
+        await self._post("/api/mod/delete", modId=mod_id)
+
+    async def _upload(
+        self, endpoint: str, name: str, file: BinaryIO, size: int, limit: int, progress, **fields
+    ) -> None:
+        if size < 0 or size > limit:
+            raise ValueError(f"File size must be between 0 and {limit} bytes")
+        body = MultipartUpload(
+            {"visitSecret": self.visit_secret or "", "size": str(size), **fields},
+            name,
+            file,
+            size,
+            progress,
+        )
+        await self.transport.execute(
+            self._request(endpoint, content=body, headers=body.headers, timeout=60)
         )
 
-    @router.endpoint()
-    def upload_mod(
+    async def upload_mod(
+        self, name: str, file: BinaryIO, size: int, progress: Callable[[int], None] | None = None
+    ) -> None:
+        await self._upload(
+            "/api/mod/upload", name, file, size, self.settings.max_mod_size, progress
+        )
+
+    async def upload_save(
         self,
         name: str,
-        file,
+        file: BinaryIO,
         size: int,
-        progress: Callable[[int], None] | None = None,
-    ) -> httpx.Request:
-        if size > self.settings.max_mod_size:
-            raise ValueError(f"Mod file must be under {self.settings.max_mod_size} bytes")
-        upload_file = UploadProgressFile(file, progress)
-        return router.build_request(
-            method="POST",
-            path="/api/mod/upload",
-            data={
-                "visitSecret": self.visit_secret,
-                "size": str(size),
-            },
-            files={"file": (name, upload_file, "application/x-zip-compressed")},
-        )
-
-    @router.endpoint()
-    def delete_save_slot(self, slot: str) -> httpx.Request:
-        return router.build_request(
-            method="POST",
-            path="/api/save/delete",
-            data={
-                "visitSecret": self.visit_secret,
-                "save": slot,
-            },
-        )
-
-    @router.endpoint()
-    def upload_save(
-        self, name: str, file, size: int, slot: str, progress: Callable[[int], None] | None = None
-    ) -> httpx.Request:
-        if size > self.settings.max_save_size:
-            raise ValueError(f"Save file must be under {self.settings.max_save_size} bytes")
-        upload_file = UploadProgressFile(file, progress)
-        return router.build_request(  # noqa
-            method="POST",
-            path="/api/save/upload",
-            data={
-                "visitSecret": self.visit_secret,
-                "size": str(size),
-                "save": slot,
-            },
-            files={"file": (name, upload_file, "application/x-zip-compressed")},
-        )
-
-    async def download_save_slot(
-        self,
         slot: str,
-        file_path: str,
         progress: Callable[[int], None] | None = None,
     ) -> None:
-        request = router.build_request(
-            method="POST",
-            path="/api/save/download",
-            data={
-                "visitSecret": self.visit_secret,
-                "save": slot,
-            },
+        await self._upload(
+            "/api/save/upload", name, file, size, self.settings.max_save_size, progress, save=slot
         )
-        response = await router.send(request, stream=True)
+
+    async def delete_save_slot(self, slot: str) -> None:
+        await self._post("/api/save/delete", save=slot)
+
+    async def download_save_slot(
+        self, slot: str, file_path: str, progress: Callable[[int], None] | None = None
+    ) -> None:
+        request = self._request(
+            "/api/save/download", data={"visitSecret": self.visit_secret, "save": slot}, timeout=60
+        )
+        response = await self.transport.send(request, stream=True)
+        temporary: Path | None = None
         try:
             if not response.is_success:
                 await response.aread()
-                raise httpx.HTTPStatusError(
-                    f"Error downloading save: {response.text}",
-                    request=request,
-                    response=response,
-                )
-            with open(file_path, "wb") as file:
-                async for chunk in response.aiter_bytes(8192):
-                    if chunk:
-                        file.write(chunk)
-                        if progress:
-                            progress(file.tell())
+                self.transport.check_response(response)
+            target = Path(file_path)
+            fd, name = tempfile.mkstemp(
+                prefix=f".{target.name}-", suffix=".part", dir=target.parent
+            )
+            temporary = Path(name)
+            with os.fdopen(fd, "wb") as file:
+                done = 0
+                async for chunk in response.aiter_bytes(256 * 1024):
+                    await blocking_io(file.write, chunk)
+                    done += len(chunk)
+                    if progress:
+                        progress(done)
+                await blocking_io(file.flush)
+                await blocking_io(os.fsync, file.fileno())
+            # Atomic commit; no asynchronous work may replace the file after cancellation.
+            temporary.replace(target)
         finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
             await response.aclose()
 
-    @router.endpoint()
-    def send_command(self, launch_id: int, command: str) -> httpx.Request:
-        return router.build_request(
-            method="POST",
-            path="/api/instance/console",
-            data={
-                "visitSecret": self.visit_secret,
-                "launchId": launch_id,
-                "input": command,
-            },
+    async def send_command(self, launch_id: int, command: str) -> None:
+        await self._post("/api/instance/console", launchId=launch_id, input=command)
+
+    async def start_instance(self, region: str, version: str, save: str) -> None:
+        await self._post("/api/instance/start", region=region, version=version, save=save)
+
+    async def stop_instance(self, launch_id: int) -> None:
+        await self.transport.execute(
+            self._request(
+                "/api/instance/stop",
+                data={"visitSecret": self.visit_secret, "launchId": launch_id},
+                timeout=self.settings.stop_timeout,
+            )
         )
 
-    @router.endpoint()
-    def start_instance(self, region: str, version: str, save: str) -> httpx.Request:
-        return router.build_request(
-            method="POST",
-            path="/api/instance/start",
-            data={
-                "visitSecret": self.visit_secret,
-                "region": region,
-                "version": version,
-                "save": save,
-            },
-        )
-
-    @router.endpoint()
-    def stop_instance(self, launch_id: int) -> httpx.Request:
-        return router.build_request(
-            method="POST",
-            path="/api/instance/stop",
-            data={
-                "visitSecret": self.visit_secret,
-                "launchId": launch_id,
-            },
-            timeout=3600,
-        )
+    async def aclose(self) -> None:
+        await self.transport.aclose()
