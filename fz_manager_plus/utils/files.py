@@ -1,5 +1,28 @@
+import json
+import zipfile
 from os import path, walk
 from pathlib import Path
+
+
+def mod_archive_identity(archive_path: str) -> str | None:
+    """The "{title} {version}" string factorio.zone reports as a mod's `text`,
+    read from the archive's own info.json (Factorio requires the layout
+    "<mod>_<version>/info.json"). Returns None if it can't be determined,
+    e.g. a non-Factorio zip or an unexpected/missing info.json."""
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            info_names = [
+                name
+                for name in archive.namelist()
+                if name.count("/") == 1 and name.endswith("/info.json")
+            ]
+            if len(info_names) != 1:
+                return None
+            with archive.open(info_names[0]) as info_file:
+                info = json.load(info_file)
+        return f"{info['title']} {info['version']}"
+    except (KeyError, TypeError, ValueError, OSError, zipfile.BadZipFile):
+        return None
 
 
 def find_by_extension(folder: str, extension: str) -> dict[str, str]:

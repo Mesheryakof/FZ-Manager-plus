@@ -1,4 +1,6 @@
 import asyncio
+import json
+import zipfile
 
 import pytest
 
@@ -7,6 +9,14 @@ from fz_manager_plus.domain.messages import ModEntry, ModsMessage
 from fz_manager_plus.domain.state import TransferProgress, TransferResult
 from fz_manager_plus.utils.concurrency import run_batched
 from tests.fakes import eventually, ready_session
+
+
+def _write_mod_zip(path, mod_name: str, title: str, version: str) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            f"{mod_name}/info.json",
+            json.dumps({"name": mod_name, "title": title, "version": version}),
+        )
 
 
 def test_prepare_skips_existing_and_flags_orphaned_remote_mods(tmp_path):
@@ -26,6 +36,32 @@ def test_prepare_skips_existing_and_flags_orphaned_remote_mods(tmp_path):
         plan = await ModTransferService(session).prepare(str(tmp_path))
         assert [item.label for item in plan.upload] == ["new.zip"]
         assert [mod.text for mod in plan.remove] == ["orphaned.zip"]
+        await session.aclose()
+
+    asyncio.run(check())
+
+
+def test_prepare_matches_by_archive_title_and_version_not_filename(tmp_path):
+    async def check():
+        session, _, _ = await ready_session()
+        # The server reports "{title} {version}" (read from info.json server-side),
+        # not the archive's OS filename -- a mismatch here used to cause every mod
+        # to look "missing" and be re-uploaded on every sync.
+        await session.handle_message(
+            ModsMessage(
+                type="mods",
+                mods=[ModEntry(id=1, text="AAI Containers & Warehouses 0.4.0", enabled=True)],
+            )
+        )
+        _write_mod_zip(
+            tmp_path / "aai-containers-and-warehouses_0.4.0.zip",
+            "aai-containers-and-warehouses",
+            "AAI Containers & Warehouses",
+            "0.4.0",
+        )
+        plan = await ModTransferService(session).prepare(str(tmp_path))
+        assert plan.upload == []
+        assert plan.remove == []
         await session.aclose()
 
     asyncio.run(check())
