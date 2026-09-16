@@ -24,7 +24,11 @@ class SavesPane(Vertical):
     }
     """
 
-    BINDINGS = [("delete,backspace", "delete_highlighted", "Delete save")]
+    BINDINGS = [
+        ("delete,backspace", "delete_highlighted", "Delete save"),
+        ("d", "download_highlighted", "Download save"),
+        ("u", "upload_highlighted", "Upload save"),
+    ]
 
     class DownloadRequested(Message):
         def __init__(self, saves_pane: SavesPane, slot: str) -> None:
@@ -83,15 +87,26 @@ class SavesPane(Vertical):
         for button_id in ("save-download-button", "save-upload-button", "save-delete-button"):
             self.query_one(f"#{button_id}", Button).disabled = False
 
-    def action_delete_highlighted(self) -> None:
+    def _highlighted_slot(self) -> str | None:
         # ListView's cursor attribute is `index`, not `highlighted`
         # (that's SelectionList/OptionList's name for the same concept --
         # see ModsPane.action_delete_highlighted for the other one).
         index = self.list_view.index
         if index is None:
-            return
-        item = self.list_view.children[index]
-        self.post_message(self.DeleteRequested(self, item.name))
+            return None
+        return self.list_view.children[index].name
+
+    def action_delete_highlighted(self) -> None:
+        if (slot := self._highlighted_slot()) is not None:
+            self.post_message(self.DeleteRequested(self, slot))
+
+    def action_download_highlighted(self) -> None:
+        if (slot := self._highlighted_slot()) is not None:
+            self.post_message(self.DownloadRequested(self, slot))
+
+    def action_upload_highlighted(self) -> None:
+        if (slot := self._highlighted_slot()) is not None:
+            self.post_message(self.UploadRequested(self, slot))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if self._hovered_slot is None:

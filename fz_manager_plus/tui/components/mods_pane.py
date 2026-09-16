@@ -26,7 +26,10 @@ class ModsPane(Vertical):
     }
     """
 
-    BINDINGS = [("delete,backspace", "delete_highlighted", "Delete mod")]
+    BINDINGS = [
+        ("delete,backspace", "delete_highlighted", "Delete mod"),
+        ("t", "toggle_highlighted", "Toggle mod"),
+    ]
 
     class Toggled(Message):
         def __init__(self, mods_pane: ModsPane, mod_id: int, enabled: bool) -> None:
@@ -131,6 +134,14 @@ class ModsPane(Vertical):
             return
         selection = self.selection_list.get_option_at_index(highlighted)
         self.post_message(self.DeleteRequested(self, selection.value))
+
+    def action_toggle_highlighted(self) -> None:
+        highlighted = self.selection_list.highlighted
+        if highlighted is None:
+            return
+        mod_id = self.selection_list.get_option_at_index(highlighted).value
+        enabled = mod_id not in self.selection_list.selected
+        self.post_message(self.Toggled(self, mod_id, enabled))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if self._hovered_mod_id is None:

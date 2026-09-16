@@ -326,3 +326,63 @@ def test_saves_pane_hover_reveals_download_upload_delete_buttons():
             assert events == [("upload", "slot1"), ("delete", "slot1")]
 
     asyncio.run(check())
+
+
+def test_mods_pane_toggle_key_binding_shown_in_footer_and_works():
+    events = []
+
+    class ModsPaneApp(App):
+        def compose(self) -> ComposeResult:
+            yield ModsPane([Mod(1, "ModOne", True)])
+
+        def on_mods_pane_toggled(self, event: ModsPane.Toggled) -> None:
+            events.append(("toggle", event.mod_id, event.enabled))
+
+    async def check():
+        app = ModsPaneApp()
+        async with app.run_test(size=(60, 20)) as pilot:
+            pane = app.query_one(ModsPane)
+            pane.selection_list.focus()
+            await pilot.pause()
+            active = {b.action: b for _, (_, b, _, _) in app.screen.active_bindings.items()}
+            assert active["toggle_highlighted"].key == "t"
+            assert active["toggle_highlighted"].show
+            assert active["delete_highlighted"].show
+
+            await pilot.press("t")
+            await pilot.pause()
+            assert events == [("toggle", 1, False)]
+
+    asyncio.run(check())
+
+
+def test_saves_pane_download_and_upload_key_bindings_shown_in_footer_and_work():
+    events = []
+
+    class SavesPaneApp(App):
+        def compose(self) -> ComposeResult:
+            yield SavesPane({"slot1": "first 1.0MB"})
+
+        def on_saves_pane_download_requested(self, event: SavesPane.DownloadRequested) -> None:
+            events.append(("download", event.slot))
+
+        def on_saves_pane_upload_requested(self, event: SavesPane.UploadRequested) -> None:
+            events.append(("upload", event.slot))
+
+    async def check():
+        app = SavesPaneApp()
+        async with app.run_test(size=(60, 20)) as pilot:
+            pane = app.query_one(SavesPane)
+            pane.list_view.focus()
+            await pilot.pause()
+            active = {b.action: b for _, (_, b, _, _) in app.screen.active_bindings.items()}
+            assert active["download_highlighted"].key == "d"
+            assert active["upload_highlighted"].key == "u"
+            assert active["download_highlighted"].show and active["upload_highlighted"].show
+
+            await pilot.press("d")
+            await pilot.press("u")
+            await pilot.pause()
+            assert events == [("download", "slot1"), ("upload", "slot1")]
+
+    asyncio.run(check())
