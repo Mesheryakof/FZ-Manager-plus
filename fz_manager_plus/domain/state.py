@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from typing import TypeAlias
 
 
 class ServerStatus(StrEnum):
@@ -79,5 +80,5 @@ class TransferResult:
     error: str | None = None
 
 
-type SessionEvent = LogEvent | StateChanged | TokenReceived | AuthenticationRequired
-type TransferEvent = TransferProgress | TransferResult
+SessionEvent: TypeAlias = LogEvent | StateChanged | TokenReceived | AuthenticationRequired
+TransferEvent: TypeAlias = TransferProgress | TransferResult

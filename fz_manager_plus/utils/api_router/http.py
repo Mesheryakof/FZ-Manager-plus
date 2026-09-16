@@ -2,7 +2,7 @@
 
 import functools
 from collections.abc import Callable
-from typing import BinaryIO
+from typing import BinaryIO, TypeVar
 
 import httpx
 from pydantic import TypeAdapter, ValidationError
@@ -10,6 +10,8 @@ from pydantic import TypeAdapter, ValidationError
 from fz_manager_plus.domain.errors import ApiError as ApiError
 from fz_manager_plus.domain.errors import DecodeError as DecodeError
 from fz_manager_plus.domain.errors import DisconnectedError
+
+T = TypeVar("T")
 
 
 class UploadProgressFile:
@@ -55,7 +57,7 @@ class ApiRouterHttp:
         if not response.is_success:
             raise ApiError(response.status_code, response.text)
 
-    async def execute[T](
+    async def execute(
         self, request: httpx.Request, response_model: type[T] | None = None
     ) -> T | None:
         response = await self.send(request)

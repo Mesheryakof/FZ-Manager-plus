@@ -1,9 +1,9 @@
 from collections.abc import AsyncIterator, Callable
-from typing import BinaryIO, Protocol
+from typing import BinaryIO, Protocol, TypeAlias
 
 from fz_manager_plus.domain.messages import BlankMessage, FzMessage, LoginResponse
 
-type Progress = Callable[[int], None] | None
+Progress: TypeAlias = Callable[[int], None] | None
 
 
 class ZoneAPI(Protocol):

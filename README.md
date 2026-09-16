@@ -2,7 +2,7 @@
 
 Terminal UI for managing a Factorio server hosted by [Factorio Zone](https://factorio.zone/), based on [FZ-Manager](https://github.com/michelsciortino/FZ-Manager).
 
-Requires Python 3.14 or newer.
+Requires Python 3.11 or newer.
 
 ## Installation and launch
 

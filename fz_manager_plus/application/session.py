@@ -5,6 +5,7 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from inspect import isawaitable
+from typing import TypeAlias, TypeVar
 
 from fz_manager_plus.application.ports import ZoneAPI, ZoneSocket
 from fz_manager_plus.config import Settings
@@ -37,7 +38,8 @@ from fz_manager_plus.domain.state import (
     TokenReceived,
 )
 
-type Listener = Callable[[SessionEvent], Awaitable[None] | None]
+Listener: TypeAlias = Callable[[SessionEvent], Awaitable[None] | None]
+T = TypeVar("T")
 _ADDRESS = re.compile(r"selecting connection (\d+\.\d+\.\d+\.\d+:\d+)")
 _LOG_LIMIT = 10_000
 _logger = logging.getLogger(__name__)
@@ -210,7 +212,7 @@ class FactorioZoneSession:
         if self._closed or self._disconnected.is_set() or not {"auth", *parts} <= self.state.ready:
             raise DisconnectedError("Connection is not ready; wait for synchronization")
 
-    async def _call[T](self, operation: Callable[[], Awaitable[T]]) -> T:
+    async def _call(self, operation: Callable[[], Awaitable[T]]) -> T:
         self.require_ready()
         disconnected = self._disconnected
 

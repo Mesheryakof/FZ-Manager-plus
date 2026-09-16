@@ -1,8 +1,11 @@
 import asyncio
 from collections.abc import Callable
+from typing import TypeVar
+
+T = TypeVar("T")
 
 
-async def blocking_io[T](function: Callable[..., T], *args, **kwargs) -> T:
+async def blocking_io(function: Callable[..., T], *args, **kwargs) -> T:
     """Finish in-flight file I/O before cancellation closes or removes its file."""
     task = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
     try:

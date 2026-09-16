@@ -1,5 +1,6 @@
 import ssl
 from collections.abc import AsyncIterator, Callable
+from typing import Generic, TypeVar
 
 from pydantic import TypeAdapter, ValidationError
 from websockets import client as ws_client
@@ -7,8 +8,10 @@ from websockets.exceptions import InvalidStatusCode, WebSocketException
 
 from fz_manager_plus.domain.errors import AuthenticationError, DisconnectedError
 
+TMessage = TypeVar("TMessage")
 
-class WebSocketClient[TMessage]:
+
+class WebSocketClient(Generic[TMessage]):
     """One connection; reconnection and message handling belong to the session."""
 
     def __init__(

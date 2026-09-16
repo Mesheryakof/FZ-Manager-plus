@@ -14,7 +14,7 @@ def _to_blank_message(raw: str | bytes, error: ValidationError) -> BlankMessage:
         data = json.loads(raw)
         if not isinstance(data, dict):
             data = {}
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         data = {}
     data["type"] = str(data.get("type", "unknown"))
     return BlankMessage.model_validate(data)

@@ -6,7 +6,7 @@ authors = [
     { name = "michelsciortino", email = "michel.sciortino@outlook.com" },
     { name = "Mesheryakof", email = "danil.spb.it@gmail.com" },
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27.0,<0.28.0",
     "certifi>=2021.10.8",
@@ -42,7 +42,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.format]

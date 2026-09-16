@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import TypeAlias
 
 from rich.text import Text
 from textual import work
@@ -12,7 +13,7 @@ from textual.widgets import Button, ProgressBar, Static
 from fz_manager_plus.domain.state import TransferEvent, TransferProgress, TransferResult
 from fz_manager_plus.domain.state import UploadItem as UploadItem
 
-type UploadRunner = Callable[[Callable[[TransferEvent], None]], Awaitable[list[str]]]
+UploadRunner: TypeAlias = Callable[[Callable[[TransferEvent], None]], Awaitable[list[str]]]
 
 
 class ModsUploadScreen(ModalScreen[list[str] | None]):
