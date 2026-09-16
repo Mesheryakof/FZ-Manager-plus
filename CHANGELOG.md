@@ -1,3 +1,14 @@
+## v0.4.0 (2026-09-16)
+
+### Feat
+
+- **tui**: show the app version in the bottom status row
+
+### Fix
+
+- **sync**: flag duplicate remote mod copies for removal too
+- **sync**: match mods by archive info.json identity, not OS filename
+
 ## v0.3.0 (2026-09-16)
 
 ### Feat
