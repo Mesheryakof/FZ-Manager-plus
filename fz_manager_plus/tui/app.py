@@ -281,6 +281,14 @@ class FzManagerApp(App):
         if not message:
             return
         self.main_screen.query_one(LogPane).log_view.write(message)
+        self._append_server_log(message)
+
+    def _append_server_log(self, message: str | Text) -> None:
+        text = message.plain if isinstance(message, Text) else message
+        with contextlib.suppress(OSError):
+            self.store.server_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.store.server_log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"[{datetime.now(UTC).isoformat(timespec='seconds')}] {text}\n")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "command-input":

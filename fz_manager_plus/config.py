@@ -83,6 +83,7 @@ class SettingsStore:
         self.directory = directory if directory is not None else config_directory()
         self.path = self.directory / "settings.json"
         self.crash_log_path = self.directory / "crash.log"
+        self.server_log_path = self.directory / "server.log"
         self.legacy_path = legacy_path or Path(tempfile.gettempdir()) / ".fzmp" / "settings.json"
         self._lock = asyncio.Lock()
 

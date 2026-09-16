@@ -47,7 +47,7 @@ The log pane and log deduplication history are limited to 10,000 entries each.
 
 ## Settings
 
-Settings and the crash log are stored in:
+Settings, the crash log and the server log are stored in:
 
 | Platform | Default directory |
 | --- | --- |
@@ -55,7 +55,7 @@ Settings and the crash log are stored in:
 | Linux | `$XDG_CONFIG_HOME/fz-manager-plus`, or `~/.config/fz-manager-plus` |
 | Windows | `%LOCALAPPDATA%/fz-manager-plus` |
 
-Use `--storage-dir` or `FZM_STORAGE_DIR` to override the directory. The settings file is `settings.json`; the crash log is `crash.log`.
+Use `--storage-dir` or `FZM_STORAGE_DIR` to override the directory. The settings file is `settings.json`; the crash log is `crash.log`; everything shown in the log pane (connection status, console output, mod/save actions) is also timestamped and appended to `server.log`.
 
 On first use of a directory without settings, the previous temporary-directory `.fzmp/settings.json` is imported if present. Its source is retained. Settings are validated before migration and written atomically; tokens are saved as soon as authentication succeeds. On POSIX systems the new settings file has mode `0600`.
 

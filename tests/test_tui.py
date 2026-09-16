@@ -13,6 +13,7 @@ from fz_manager_plus.domain.state import (
     TransferResult,
     UploadItem,
 )
+from fz_manager_plus.terminal import Term
 from fz_manager_plus.tui.app import FzManagerApp
 from fz_manager_plus.tui.components import (
     ConfirmScreen,
@@ -222,5 +223,21 @@ def test_status_bar_server_address_opens_steam_direct_connect():
             bar.update_status(None, "OFFLINE", None)
             await pilot.pause()
             assert "Server:" not in str(bar.content)
+
+    asyncio.run(check())
+
+
+def test_push_log_appends_plain_text_to_server_log_file(tmp_path):
+    async def check():
+        app, _, _ = make_app(tmp_path)
+        async with app.run_test() as pilot:
+            await eventually(lambda: app.session.state.connection == ConnectionStatus.CONNECTED)
+            app.push_log(Term.info("[test]", "hello world"))
+            await pilot.pause()
+
+        content = app.store.server_log_path.read_text(encoding="utf-8")
+        line = content.splitlines()[-1]
+        assert line.endswith("] [test] hello world")
+        assert line.startswith("[") and "T" in line.split("]")[0]
 
     asyncio.run(check())
