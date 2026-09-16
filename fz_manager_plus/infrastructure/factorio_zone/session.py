@@ -40,7 +40,6 @@ class FactorioZoneSession:
         self.socket = socket
 
         self.user_token: str | None = None
-        self.referrer_code: str | None = None
         self.regions: dict = {}
         self.versions: dict = {}
         self.saves: dict = {}
@@ -129,7 +128,6 @@ async def _handle_visit(session: FactorioZoneSession, message: VisitMessage) -> 
     session.api.visit_secret = message.secret
     response = await session.api.login()
     session.user_token = response.user_token
-    session.referrer_code = response.referral_code
 
 
 @FactorioZoneSocket.on(OptionsMessage)

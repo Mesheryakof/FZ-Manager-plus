@@ -25,7 +25,7 @@ def create_mod_settings_zip(mods_folder_path: str) -> str:
                 "version": "0.1.0",
                 "title": MOD_SETTINGS_DAT,
                 "description": (
-                    "Mod settings for factorio.zone created with FZ-Manager tool by @michelsciortino"
+                    "Mod settings for factorio.zone created with FZ-Manager Plus tool by @mesheryakof"
                 ),
             },
             fp,

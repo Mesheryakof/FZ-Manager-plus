@@ -10,7 +10,7 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Input, ProgressBar
+from textual.widgets import Footer, Header, Input
 
 from fz_manager_plus.config import CRASH_LOG_PATH, Settings, get_settings
 from fz_manager_plus.infrastructure.factorio_zone.client import FactorioZoneAPI
@@ -27,7 +27,6 @@ from fz_manager_plus.tui.components import (
     TokenScreen,
 )
 from fz_manager_plus.tui.flows import ModFlows, SaveFlows, ServerFlows, SyncFlows
-from fz_manager_plus.tui.progress import TransferProgress
 
 
 class MenuAction(str, Enum):
@@ -41,10 +40,12 @@ class MenuAction(str, Enum):
     START_SERVER = "Start server"
     STOP_SERVER = "Stop server"
     SYNC = "Sync mods with server"
+    DELETE_ALL_MODS = "Delete all mods"
 
 
 STATIC_MENU_ITEMS = [
     MenuAction.SYNC,
+    MenuAction.DELETE_ALL_MODS,
 ]
 
 
@@ -80,13 +81,17 @@ class FzManagerApp(App):
         height: auto;
     }
 
-    #bottom-bar {
-        dock: bottom;
-        height: auto;
+    #saves-pane {
+        height: 1fr;
     }
 
-    #sync-progress {
-        width: 1fr;
+    #mods-pane {
+        height: 4fr;
+    }
+
+    #bottom-bar {
+        dock: bottom;
+        height: 2;
     }
     """
 
@@ -134,13 +139,10 @@ class FzManagerApp(App):
             yield LogPane(id="log-pane")
             with Vertical(id="sidebar"):
                 yield MenuPane(self._menu_items(), id="menu-pane")
-                yield ModsPane(self.session.mods, id="mods-pane")
                 yield SavesPane(self.session.saves, id="saves-pane")
+                yield ModsPane(self.session.mods, id="mods-pane")
         with Vertical(id="bottom-bar"):
             yield StatusBar("", id="status-bar")
-            progress_bar = ProgressBar(id="sync-progress", show_eta=False)
-            progress_bar.display = False
-            yield progress_bar
             yield Footer()
 
     def on_mount(self) -> None:
@@ -194,10 +196,6 @@ class FzManagerApp(App):
         text = " ".join(log)
         self.main_screen.query_one(LogPane).log_view.write(Text.from_ansi(text))
 
-    def start_transfer_progress(self, total: float) -> TransferProgress:
-        bar = self.main_screen.query_one("#sync-progress", ProgressBar)
-        return TransferProgress(bar, total)
-
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "command-input":
             return
@@ -236,6 +234,8 @@ class FzManagerApp(App):
                 self.stop_server_flow()
             case MenuAction.SYNC:
                 self.sync_flow()
+            case MenuAction.DELETE_ALL_MODS:
+                self.delete_all_mods_flow()
 
     def on_mods_pane_toggled(self, event: ModsPane.Toggled) -> None:
         self.toggle_mod(event.mod_id, event.enabled)
@@ -250,6 +250,10 @@ class FzManagerApp(App):
     @work(exclusive=False, group="delete-mod")
     async def delete_mod_flow(self, mod_id: int) -> None:
         await self.mod_flows.delete(mod_id)
+
+    @work(exclusive=True, group="delete-all-mods")
+    async def delete_all_mods_flow(self) -> None:
+        await self.mod_flows.delete_all()
 
     def on_saves_pane_download_requested(self, event: SavesPane.DownloadRequested) -> None:
         self.download_save_slot_flow(event.slot)

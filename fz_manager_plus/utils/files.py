@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import re
-from os import listdir, path, walk
+from os import path, walk
 
 
 def find_by_extension(folder: str, extension: str) -> dict[str, str]:
@@ -11,17 +10,6 @@ def find_by_extension(folder: str, extension: str) -> dict[str, str]:
         for name in filenames:
             if name.endswith(extension):
                 found.setdefault(name, path.join(root, name))
-    return found
-
-
-def find_matching(folder: str, pattern: str) -> dict[str, str]:
-    """Regex group(1) -> absolute path, for files directly inside `folder`
-    (non-recursive) whose name fully matches `pattern`."""
-    found: dict[str, str] = {}
-    for entry in listdir(folder):
-        match = re.fullmatch(pattern, entry)
-        if match:
-            found[match.group(1)] = path.join(folder, entry)
     return found
 
 

@@ -25,3 +25,20 @@ class ModFlows:
             self.host.push_log(Term.info("[manage mods]", f"Deleted {name}"))
         except Exception as ex:  # noqa: BLE001
             self.host.push_log(Term.error("[manage mods]", str(ex)))
+
+    async def delete_all(self) -> None:
+        mods = list(self.host.session.mods)
+        if not mods:
+            self.host.push_log(Term.info("[manage mods]", "No uploaded mods found"))
+            return
+        confirmed = await self.host.push_screen_wait(
+            ConfirmScreen(f"Delete all {len(mods)} mod(s)?")
+        )
+        if not confirmed:
+            return
+        for mod in mods:
+            try:
+                await self.host.session.delete_mod(mod.id)
+                self.host.push_log(Term.info("[manage mods]", f"Deleted {mod.text}"))
+            except Exception as ex:  # noqa: BLE001
+                self.host.push_log(Term.error("[manage mods]", f"{mod.text}: {ex}"))
