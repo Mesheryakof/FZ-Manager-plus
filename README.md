@@ -84,11 +84,21 @@ The composition root is `fz_manager_plus/runtime.py`. `domain` defines state and
 Versions are bumped, committed and tagged in one step with [Commitizen](https://commitizen-tools.github.io/commitizen/), configured under `[tool.commitizen]` in `pyproject.toml` to use uv's own version provider (updates `pyproject.toml` *and* `uv.lock`) and the existing `v$version` tag format:
 
 ```sh
-uv run cz bump                       # infers patch/minor/major from Conventional Commits since the last tag
-uv run cz bump --increment minor     # force a specific increment instead of inferring it
-uv run cz bump --devrelease 1        # dev/pre-release build, e.g. 0.1.2 -> 0.1.3.dev1
-uv run cz bump --dry-run             # preview the version, tag and changelog without changing anything
+uv run cz bump
 ```
+
+Useful flags (combine as needed):
+
+| Flag | Effect |
+| --- | --- |
+| `--dry-run` | Preview the next version, tag and changelog entry; changes nothing |
+| `--increment {MAJOR,MINOR,PATCH}` | Force a specific increment instead of inferring it from commits |
+| `--devrelease N` / `-d N` | Dev/pre-release build, e.g. `0.1.2` -> `0.1.3.dev N` |
+| `--prerelease {alpha,beta,rc}` / `-pr` | Pre-release build, e.g. `0.1.2` -> `0.1.3rc1` |
+| `--changelog` / `-ch` | Regenerate `CHANGELOG.md` even if the version doesn't change |
+| `--check-consistency` / `-cc` | Verify `pyproject.toml`/`uv.lock`/tag versions agree before bumping |
+| `--annotated-tag` | Create an annotated (instead of lightweight) git tag |
+| `--no-verify` | Skip local git commit hooks for the release commit |
 
 This updates `pyproject.toml`, `uv.lock` and `CHANGELOG.md`, then creates the release commit and the `vX.Y.Z` tag. Push both to trigger a release:
 
