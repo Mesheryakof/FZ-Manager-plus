@@ -6,10 +6,6 @@ from textual.widgets import ListItem, ListView, Static
 
 
 class SelectableList(ListView):
-    # Not named `Selected`: ListView's own Enter-key handling does
-    # `self.post_message(self.Selected(self, item))` internally, resolved
-    # by attribute lookup -- a class named `Selected` here would shadow
-    # that and get constructed by ListView's code with the wrong args.
     class Picked(Message):
         def __init__(self, selectable_list: SelectableList, value: str) -> None:
             super().__init__()
@@ -31,11 +27,6 @@ class SelectableList(ListView):
         if options == self._options:
             return
         self._options = list(options)
-        # recompose(): Textual's atomic "remove children, call compose()
-        # again" primitive, instead of clear()/extend() (both return
-        # awaitables that were easy to leave unawaited, and mutate the
-        # existing ListView in two separate steps rather than rebuilding it
-        # in one). See ModsPane.sync_mods() for the same fix, same reason.
         await self.recompose()
 
     def index_of(self, value: str) -> int | None:
