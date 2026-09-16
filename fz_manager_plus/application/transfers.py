@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fz_manager_plus.application.session import FactorioZoneSession
 from fz_manager_plus.domain.state import (
+    Mod,
     SyncPlan,
     TransferEvent,
     TransferProgress,
@@ -22,20 +23,32 @@ class ModTransferService:
         """Diff local mod archives against remote mods. factorio.zone reports each
         mod as "{title} {version}" (from the archive's own info.json), not its
         filename, so that's what's read from each local archive and compared;
-        archives whose identity can't be read fall back to their filename."""
+        archives whose identity can't be read fall back to their filename.
+
+        Remote mods sharing an identity with no local match (or duplicate
+        remote copies of the same identity -- e.g. leftover re-uploads from
+        before matching was fixed) are flagged for removal, keeping at most
+        one copy per identity."""
         self.session.require_ready("mods")
         files = await blocking_io(find_by_extension, directory, ".zip")
-        remote = {mod.text: mod for mod in self.session.mods}
+
+        by_identity: dict[str, list[Mod]] = {}
+        for mod in sorted(self.session.mods, key=lambda m: m.id):
+            by_identity.setdefault(mod.text, []).append(mod)
 
         def inspect_files():
             identities = {name: mod_archive_identity(file) or name for name, file in files.items()}
+            local_identities = set(identities.values())
             upload = [
                 UploadItem(name, Path(file).stat().st_size, Path(file))
                 for name, file in sorted(files.items())
-                if identities[name] not in remote
+                if identities[name] not in by_identity
             ]
-            local_identities = set(identities.values())
-            remove = [mod for key, mod in sorted(remote.items()) if key not in local_identities]
+            remove = [
+                mod
+                for identity, mods in sorted(by_identity.items())
+                for mod in (mods if identity not in local_identities else mods[1:])
+            ]
             return SyncPlan(upload, remove)
 
         return await blocking_io(inspect_files)

@@ -41,6 +41,28 @@ def test_prepare_skips_existing_and_flags_orphaned_remote_mods(tmp_path):
     asyncio.run(check())
 
 
+def test_prepare_flags_duplicate_remote_copies_keeping_one(tmp_path):
+    async def check():
+        session, _, _ = await ready_session()
+        await session.handle_message(
+            ModsMessage(
+                type="mods",
+                mods=[
+                    ModEntry(id=1, text="existing.zip", enabled=True),
+                    ModEntry(id=2, text="existing.zip", enabled=True),
+                    ModEntry(id=3, text="existing.zip", enabled=True),
+                ],
+            )
+        )
+        (tmp_path / "existing.zip").write_bytes(b"zip")
+        plan = await ModTransferService(session).prepare(str(tmp_path))
+        assert plan.upload == []
+        assert [mod.id for mod in plan.remove] == [2, 3]
+        await session.aclose()
+
+    asyncio.run(check())
+
+
 def test_prepare_matches_by_archive_title_and_version_not_filename(tmp_path):
     async def check():
         session, _, _ = await ready_session()

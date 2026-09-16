@@ -50,8 +50,11 @@ class SyncFlows:
             self.host.push_log(Term.info("[sync]", f"Uploaded {len(items)} mod(s)."))
 
     async def _remove(self, mods: list[Mod]) -> None:
-        names = ", ".join(mod.text for mod in mods)
-        prompt = f"Delete {len(mods)} mod(s) from the server not in this folder? ({names})"
+        names = ", ".join(f"{mod.text} (#{mod.id})" for mod in mods)
+        prompt = (
+            f"Delete {len(mods)} mod(s) from the server that are missing locally or "
+            f"duplicated? ({names})"
+        )
         if not await self.host.push_screen_wait(ConfirmScreen(prompt)):
             self.host.push_log(Term.warn("[sync]", "Server-side cleanup skipped."))
             return

@@ -31,7 +31,7 @@ Run `fzmp --help` to see settings and command-line options. Enter an existing Fa
 - Download and delete remote save slots. Replacing an existing local archive requires confirmation.
 - Quit with `Ctrl+Q`. Background operations are cancelled and network clients are closed.
 
-Mod sync matches on each archive's own `info.json` (`"{title} {version}"`, the same identity factorio.zone reports), not the local filename -- a mod discovered under an unrelated OS filename (e.g. from Steam Workshop) is still recognized as already uploaded. Archives whose identity can't be read fall back to filename matching. It uploads mods missing on the server, and, after asking for confirmation, deletes remote mods whose identity isn't present in the synced folder. Duplicate ZIP filenames in different local folders are reported as a conflict.
+Mod sync matches on each archive's own `info.json` (`"{title} {version}"`, the same identity factorio.zone reports), not the local filename -- a mod discovered under an unrelated OS filename (e.g. from Steam Workshop) is still recognized as already uploaded. Archives whose identity can't be read fall back to filename matching. It uploads mods missing on the server, and, after asking for confirmation, deletes remote mods that are missing locally or are duplicate remote copies of the same identity (keeping one). Duplicate ZIP filenames in different local folders are reported as a conflict.
 
 The upload dialog can be cancelled before upload starts. After starting, wait for the results or quit the application. The API still supports save uploads and the project includes a mod-settings archive utility; neither has a menu action in this TUI.
 
