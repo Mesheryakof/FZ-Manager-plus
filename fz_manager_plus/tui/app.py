@@ -367,6 +367,13 @@ class FzManagerApp(App):
     async def delete_save_slot_flow(self, slot: str) -> None:
         await self._run_flow("delete save", lambda: self.save_flows.delete(slot))
 
+    def on_saves_pane_upload_requested(self, event: SavesPane.UploadRequested) -> None:
+        self.upload_save_slot_flow(event.slot)
+
+    @work(exclusive=False, group="upload-save")
+    async def upload_save_slot_flow(self, slot: str) -> None:
+        await self._run_flow("upload save", lambda: self.save_flows.upload(slot))
+
     @work(group="start-server")
     async def start_server_flow(self) -> None:
         await self._run_flow("start server", self.server_flows.start)

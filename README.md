@@ -27,13 +27,13 @@ Run `fzmp --help` to see settings and command-line options. Enter an existing Fa
 - Click the server address in the status bar to launch Steam and join it directly (requires Steam and Factorio to be installed).
 - Send console commands from the log pane.
 - Upload missing ZIP mods from a folder, including nested folders, with per-file progress.
-- Enable, disable or delete mods; delete all uploaded mods after confirmation.
-- Download and delete remote save slots. Replacing an existing local archive requires confirmation.
+- Hover a mod to reveal Enable/Disable and Delete buttons; delete all uploaded mods after confirmation.
+- Hover a save slot to reveal Download, Upload and Delete buttons. Upload picks a local `.zip` and replaces the slot's content (confirmation required if it already holds a save); download requires confirmation to replace an existing local archive.
 - Quit with `Ctrl+Q`. Background operations are cancelled and network clients are closed.
 
 Mod sync matches on each archive's own `info.json` (`"{title} {version}"`, the same identity factorio.zone reports), not the local filename -- a mod discovered under an unrelated OS filename (e.g. from Steam Workshop) is still recognized as already uploaded. Archives whose identity can't be read fall back to filename matching. It uploads mods missing on the server, and, after asking for confirmation, deletes remote mods that are missing locally or are duplicate remote copies of the same identity (keeping one). Duplicate ZIP filenames in different local folders are reported as a conflict.
 
-The upload dialog can be cancelled before upload starts. After starting, wait for the results or quit the application. The API still supports save uploads and the project includes a mod-settings archive utility; neither has a menu action in this TUI.
+The upload dialog can be cancelled before upload starts. After starting, wait for the results or quit the application. The project includes a mod-settings archive utility with no menu action in this TUI.
 
 ## Connection and operation status
 

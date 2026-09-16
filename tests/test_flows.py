@@ -73,6 +73,44 @@ def test_download_existing_archive_requires_confirmation(tmp_path):
     asyncio.run(check())
 
 
+def test_upload_save_to_empty_slot_skips_confirmation(tmp_path):
+    async def check():
+        session, api, _ = await ready_session()
+        archive = tmp_path / "backup.zip"
+        archive.write_bytes(b"save-data")
+        host = Host(session, [archive])
+        await SaveFlows(host).upload("slot1")
+        assert not any(isinstance(screen, ConfirmScreen) for screen in host.screens)
+        calls = [args for name, args in api.calls if name == "upload_save"]
+        assert calls[0][0] == "backup.zip"
+        assert calls[0][2] == len(b"save-data")
+        assert calls[0][3] == "slot1"
+        assert "done" in host.logs[-1].plain
+        await session.aclose()
+
+    asyncio.run(check())
+
+
+def test_upload_save_to_used_slot_requires_confirmation(tmp_path):
+    async def check():
+        session, api, _ = await ready_session()
+        archive = tmp_path / "backup.zip"
+        archive.write_bytes(b"save-data")
+
+        host = Host(session, [archive, False])
+        await SaveFlows(host).upload("slot3")
+        assert isinstance(host.screens[-1], ConfirmScreen)
+        assert not any(name == "upload_save" for name, _ in api.calls)
+
+        host = Host(session, [archive, True])
+        await SaveFlows(host).upload("slot3")
+        calls = [args for name, args in api.calls if name == "upload_save"]
+        assert calls[0][3] == "slot3"
+        await session.aclose()
+
+    asyncio.run(check())
+
+
 def test_sync_flow_skips_nothing_to_sync_when_mods_already_match(tmp_path):
     async def check():
         session, _, _ = await ready_session()
