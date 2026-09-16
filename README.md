@@ -12,7 +12,7 @@ It implements all the features of factorio.zone site plus some aggregated ones t
 - Manage your remote saves
 
 ## Requirements
-I order to install this tool, you need `python 3.10` installed, alongside with `pip`
+I order to install this tool, you need `python 3.14` installed, alongside with `pip`
 
 ## Installation
 ```sh
