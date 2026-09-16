@@ -14,6 +14,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Input
+from textual_fspicker import FileOpen, Filters, SelectDirectory
 
 from fz_manager_plus.config import CRASH_LOG_PATH, Settings, get_settings
 from fz_manager_plus.infrastructure.factorio_zone import mods
@@ -28,7 +29,6 @@ from fz_manager_plus.tui.components import (
     MenuPane,
     ModsPane,
     MultiChoiceScreen,
-    PathScreen,
     SavesPane,
     SelectableList,
     StatusBar,
@@ -125,7 +125,7 @@ class FzManagerApp(App):
                 yield ModsPane(self.session.mods, id="mods-pane")
                 yield SavesPane(self.session.saves, id="saves-pane")
         with Vertical(id="bottom-bar"):
-            yield StatusBar("Trial: N/A", id="status-bar")
+            yield StatusBar("", id="status-bar")
             yield Footer()
 
     def on_mount(self) -> None:
@@ -177,6 +177,18 @@ class FzManagerApp(App):
             return
         text = " ".join(log)
         self.main_screen.query_one(LogPane).log_view.write(Text.from_ansi(text))
+
+    @staticmethod
+    def _start_dir(remembered: str | None) -> str:
+        """Best starting directory for a file/folder picker given a
+        remembered setting -- which may itself be a directory, a file
+        inside one (e.g. the save previously uploaded), or unset."""
+        if not remembered:
+            return "."
+        if path.isdir(remembered):
+            return remembered
+        parent = path.dirname(remembered)
+        return parent if parent and path.isdir(parent) else "."
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "command-input":
@@ -253,16 +265,15 @@ class FzManagerApp(App):
             self.push_log(Term.error("[download save]", f"Slot {slot_index} is empty"))
             return
 
-        directory = await self.push_screen_wait(
-            PathScreen(
-                "Insert download directory path:",
-                default=self.settings.saves_path or "",
-                validator=lambda p: path.isdir(p),
-                error_message="Not a directory.",
+        selected = await self.push_screen_wait(
+            SelectDirectory(
+                location=self._start_dir(self.settings.saves_path),
+                title="Select download directory",
             )
         )
-        if directory is None:
+        if selected is None:
             return
+        directory = str(selected)
         self.settings.saves_path = directory
 
         size_match = re.search(r"(\d+\.\d+)MB", description)
@@ -391,16 +402,15 @@ class FzManagerApp(App):
         return on_progress
 
     async def _create_mod_settings(self) -> None:
-        mods_folder = await self.push_screen_wait(
-            PathScreen(
-                "Insert path to mods folder:",
-                default=self.settings.mods_path or "",
-                validator=lambda p: path.isdir(p),
-                error_message="Not a directory.",
+        selected = await self.push_screen_wait(
+            SelectDirectory(
+                location=self._start_dir(self.settings.mods_path),
+                title="Select mods folder",
             )
         )
-        if mods_folder is None:
+        if selected is None:
             return
+        mods_folder = str(selected)
         self.settings.mods_path = mods_folder
 
         try:
@@ -411,16 +421,15 @@ class FzManagerApp(App):
         self.push_log(Term.info("[manage mods]", f"{mod_settings_zip_path} created"))
 
     async def _upload_mods(self) -> None:
-        mods_folder = await self.push_screen_wait(
-            PathScreen(
-                "Insert path to mods folder:",
-                default=self.settings.mods_path or "",
-                validator=lambda p: path.exists(p),
-                error_message="Path does not exist.",
+        selected = await self.push_screen_wait(
+            SelectDirectory(
+                location=self._start_dir(self.settings.mods_path),
+                title="Select mods folder",
             )
         )
-        if mods_folder is None:
+        if selected is None:
             return
+        mods_folder = str(selected)
         self.settings.mods_path = mods_folder
 
         root, zip_names = mods.list_zip_files(mods_folder)
@@ -491,16 +500,16 @@ class FzManagerApp(App):
             await self.session.delete_mod(int(mod_id))
 
     async def _upload_save(self) -> None:
-        file_path = await self.push_screen_wait(
-            PathScreen(
-                "Insert path to save file:",
-                default=self.settings.saves_path or "",
-                validator=lambda p: path.exists(p) and path.splitext(p)[1] == ".zip",
-                error_message="Save file must be an existing .zip archive.",
+        selected = await self.push_screen_wait(
+            FileOpen(
+                location=self._start_dir(self.settings.saves_path),
+                title="Select save file",
+                filters=Filters(("Save archives (*.zip)", lambda p: p.suffix.lower() == ".zip")),
             )
         )
-        if file_path is None:
+        if selected is None:
             return
+        file_path = str(selected)
         self.settings.saves_path = file_path
 
         slot_choice = await self.push_screen_wait(
@@ -567,16 +576,15 @@ class FzManagerApp(App):
         if not selected:
             return
 
-        directory = await self.push_screen_wait(
-            PathScreen(
-                "Insert download directory path:",
-                default=self.settings.saves_path or "",
-                validator=lambda p: path.isdir(p),
-                error_message="Not a directory.",
+        picked_dir = await self.push_screen_wait(
+            SelectDirectory(
+                location=self._start_dir(self.settings.saves_path),
+                title="Select download directory",
             )
         )
-        if directory is None:
+        if picked_dir is None:
             return
+        directory = str(picked_dir)
         self.settings.saves_path = directory
 
         descriptions = dict(slots)
@@ -620,28 +628,26 @@ class FzManagerApp(App):
         delete_mod, no download_mod), so pulling only ever applies to
         saves; mods sync is push-only.
         """
-        mods_folder = await self.push_screen_wait(
-            PathScreen(
-                "Insert path to mods folder:",
-                default=self.settings.mods_path or "",
-                validator=lambda p: path.isdir(p),
-                error_message="Not a directory.",
+        picked_mods_dir = await self.push_screen_wait(
+            SelectDirectory(
+                location=self._start_dir(self.settings.mods_path),
+                title="Select mods folder",
             )
         )
-        if mods_folder is None:
+        if picked_mods_dir is None:
             return
+        mods_folder = str(picked_mods_dir)
         self.settings.mods_path = mods_folder
 
-        saves_folder = await self.push_screen_wait(
-            PathScreen(
-                "Insert path to saves folder:",
-                default=self.settings.saves_path or "",
-                validator=lambda p: path.isdir(p),
-                error_message="Not a directory.",
+        picked_saves_dir = await self.push_screen_wait(
+            SelectDirectory(
+                location=self._start_dir(self.settings.saves_path),
+                title="Select saves folder",
             )
         )
-        if saves_folder is None:
+        if picked_saves_dir is None:
             return
+        saves_folder = str(picked_saves_dir)
         self.settings.saves_path = saves_folder
 
         direction = await self.push_screen_wait(
