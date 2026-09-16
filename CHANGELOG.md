@@ -1,3 +1,9 @@
+## v0.3.0 (2026-09-16)
+
+### Feat
+
+- **sync**: confirm deletion of remote mods missing locally
+
 ## v0.2.0 (2026-09-16)
 
 ### Feat
