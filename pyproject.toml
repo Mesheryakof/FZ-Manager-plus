@@ -1,5 +1,5 @@
 [project]
-name = "FZ-Manager"
+name = "fz-manager-plus"
 version = "0.1.1"
 description = "Factorio Zone Server Manager"
 authors = [
@@ -22,8 +22,8 @@ dependencies = [
 repository = "https://github.com/Mesheryakof/FZ-Manager"
 
 [project.scripts]
-fzm = "fz_manager.cli:main"
-fz-manager = "fz_manager.cli:main"
+fzmp = "fz_manager.cli:main"
+fz-manager-plus = "fz_manager.cli:main"
 
 [dependency-groups]
 dev = [
@@ -32,6 +32,9 @@ dev = [
     "isort>=5.13.2,<6.0",
     "textual-dev>=1.7.0,<2.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["fz_manager"]
 
 [build-system]
 requires = ["hatchling"]

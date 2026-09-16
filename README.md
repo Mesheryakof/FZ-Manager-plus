@@ -1,5 +1,5 @@
-# FZ-Manager
-FactorioZone Manager is a command line tool made to manage an instance of Factorio Server deployed on AWS via [Factorio Zone](https://factorio.zone/).
+# FZ-Manager-Plus
+FactorioZone Manager Plus (a fork of [FZ-Manager](https://github.com/michelsciortino/FZ-Manager)) is a command line tool made to manage an instance of Factorio Server deployed on AWS via [Factorio Zone](https://factorio.zone/).
 It implements all the features of factorio.zone site plus some aggregated ones to upload all the mods sequentially with just one command.
 
 ## Features
@@ -16,14 +16,14 @@ I order to install this tool, you need `python 3.14` installed, alongside with `
 
 ## Installation
 ```sh
-pip install fz-manager
+pip install fz-manager-plus
 ```
 
 ## Usage
 ```sh
-fz-manager
+fz-manager-plus
 ```
-or just `fzm`
+or just `fzmp`
 
 ## Screenshots
 
