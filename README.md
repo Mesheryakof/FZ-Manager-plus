@@ -31,7 +31,7 @@ Run `fzmp --help` to see settings and command-line options. Enter an existing Fa
 - Download and delete remote save slots. Replacing an existing local archive requires confirmation.
 - Quit with `Ctrl+Q`. Background operations are cancelled and network clients are closed.
 
-Mod sync matches **filenames**, not archive contents. It uploads missing names; it does not delete remote mods or compare versions/checksums. Duplicate ZIP filenames in different local folders are reported as a conflict.
+Mod sync matches **filenames**, not archive contents or versions/checksums. It uploads names missing on the server, and, after asking for confirmation, deletes remote mods whose filename isn't present in the synced folder. Duplicate ZIP filenames in different local folders are reported as a conflict.
 
 The upload dialog can be cancelled before upload starts. After starting, wait for the results or quit the application. The API still supports save uploads and the project includes a mod-settings archive utility; neither has a menu action in this TUI.
 

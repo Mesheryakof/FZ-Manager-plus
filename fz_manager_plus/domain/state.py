@@ -69,6 +69,12 @@ class UploadItem:
 
 
 @dataclass(frozen=True)
+class SyncPlan:
+    upload: list[UploadItem]
+    remove: list[Mod]
+
+
+@dataclass(frozen=True)
 class TransferProgress:
     index: int
     bytes_done: int

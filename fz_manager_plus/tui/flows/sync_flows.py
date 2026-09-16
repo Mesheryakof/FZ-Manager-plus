@@ -1,8 +1,9 @@
 from textual_fspicker import SelectDirectory
 
 from fz_manager_plus.application.transfers import ModTransferService
+from fz_manager_plus.domain.state import Mod, UploadItem
 from fz_manager_plus.terminal import Term
-from fz_manager_plus.tui.components import ModsUploadScreen
+from fz_manager_plus.tui.components import ConfirmScreen, ModsUploadScreen
 from fz_manager_plus.tui.flows.host import FlowHost
 from fz_manager_plus.utils.files import start_dir
 
@@ -22,13 +23,17 @@ class SyncFlows:
             return
         settings.mods_path = str(directory)
         await self.host.save_settings()
-        items = await self.transfers.prepare(str(directory))
-        if not items:
-            self.host.push_log(
-                Term.info("[sync]", "Nothing to push -- server already has everything.")
-            )
+        plan = await self.transfers.prepare(str(directory))
+        if not plan.upload and not plan.remove:
+            self.host.push_log(Term.info("[sync]", "Nothing to sync -- server already matches."))
             return
 
+        if plan.upload:
+            await self._upload(plan.upload)
+        if plan.remove:
+            await self._remove(plan.remove)
+
+    async def _upload(self, items: list[UploadItem]) -> None:
         async def run_uploads(notify):
             return await self.transfers.upload(items, notify)
 
@@ -43,3 +48,12 @@ class SyncFlows:
             )
         else:
             self.host.push_log(Term.info("[sync]", f"Uploaded {len(items)} mod(s)."))
+
+    async def _remove(self, mods: list[Mod]) -> None:
+        names = ", ".join(mod.text for mod in mods)
+        prompt = f"Delete {len(mods)} mod(s) from the server not in this folder? ({names})"
+        if not await self.host.push_screen_wait(ConfirmScreen(prompt)):
+            self.host.push_log(Term.warn("[sync]", "Server-side cleanup skipped."))
+            return
+        await self.host.session.delete_mods({mod.id for mod in mods})
+        self.host.push_log(Term.info("[sync]", f"Deleted {len(mods)} mod(s) from the server."))
