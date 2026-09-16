@@ -3,17 +3,11 @@ from __future__ import annotations
 import json
 import os
 import zipfile
-from dataclasses import dataclass
-from os import path, walk
+from os import path
+
+from fz_manager_plus.utils.files import find_by_extension
 
 MOD_SETTINGS_DAT = "mod-settings.dat"
-
-
-@dataclass
-class ModFile:
-    name: str
-    file_path: str
-    size: int
 
 
 def create_mod_settings_zip(mods_folder_path: str) -> str:
@@ -46,14 +40,11 @@ def create_mod_settings_zip(mods_folder_path: str) -> str:
     return mod_settings_zip_path
 
 
-def list_zip_files(mods_folder_path: str) -> tuple[str | None, list[str]]:
-    root, _, filenames = next(walk(mods_folder_path), (None, None, []))
-    return root, sorted(f for f in filenames if f.endswith(".zip"))
+def list_zip_files(mods_folder_path: str) -> dict[str, str]:
+    """Mod archive filename -> its absolute path, searched recursively.
 
-
-def build_mod_files(root: str, filenames: list[str]) -> list[ModFile]:
-    mod_files = []
-    for name in filenames:
-        file_path = path.join(root, name)
-        mod_files.append(ModFile(name=name, file_path=file_path, size=path.getsize(file_path)))
-    return mod_files
+    The Steam release nests each mod's zip inside its own per-version
+    subfolder (mods/some-mod_1.2.3/some-mod_1.2.3.zip) instead of keeping
+    the mods folder flat, so a single-level listing misses them.
+    """
+    return find_by_extension(mods_folder_path, ".zip")
