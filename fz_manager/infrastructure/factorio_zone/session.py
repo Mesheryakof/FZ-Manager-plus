@@ -19,7 +19,7 @@ from fz_manager.infrastructure.factorio_zone.models import (
     StartingMessage,
     StoppingMessage,
     VisitMessage,
-    WarnMessage,
+    WarnMessage, ConsoleMessage,
 )
 from fz_manager.infrastructure.factorio_zone.socket import FactorioZoneSocket
 from fz_manager.terminal import Term
