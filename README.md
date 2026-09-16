@@ -81,21 +81,18 @@ The composition root is `fz_manager_plus/runtime.py`. `domain` defines state and
 
 ### Releasing a new version
 
-Versions are bumped in place with [`uv version --bump`](https://docs.astral.sh/uv/concepts/projects/config/#project-version), which updates `pyproject.toml` (and re-locks `uv.lock`):
+Versions are bumped, committed and tagged in one step with [Commitizen](https://commitizen-tools.github.io/commitizen/), configured under `[tool.commitizen]` in `pyproject.toml` to use uv's own version provider (updates `pyproject.toml` *and* `uv.lock`) and the existing `v$version` tag format:
 
 ```sh
-uv version --bump patch                # 0.1.1 -> 0.1.2
-uv version --bump minor                # 0.1.1 -> 0.2.0
-uv version --bump major                # 0.1.1 -> 1.0.0
-uv version --bump patch --bump dev     # 0.1.1 -> 0.1.2.dev1 (pre-release/dev build)
+uv run cz bump                       # infers patch/minor/major from Conventional Commits since the last tag
+uv run cz bump --increment minor     # force a specific increment instead of inferring it
+uv run cz bump --devrelease 1        # dev/pre-release build, e.g. 0.1.2 -> 0.1.3.dev1
+uv run cz bump --dry-run             # preview the version, tag and changelog without changing anything
 ```
 
-Commit the result and tag it to trigger a release:
+This updates `pyproject.toml`, `uv.lock` and `CHANGELOG.md`, then creates the release commit and the `vX.Y.Z` tag. Push both to trigger a release:
 
 ```sh
-git add pyproject.toml uv.lock
-git commit -m "chore(release): bump version to v$(uv version --short)"
-git tag "v$(uv version --short)"
 git push origin main --tags
 ```
 

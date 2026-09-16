@@ -31,6 +31,7 @@ dev = [
     "ruff>=0.13,<0.17",
     "isort>=5.13.2,<6.0",
     "textual-dev>=1.7.0,<2.0",
+    "commitizen>=4.18.1",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -55,3 +56,12 @@ ignore = ["E501"]
 profile = "black"
 line_length = 100
 known_first_party = ["fz_manager_plus"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "uv"
+version_scheme = "pep440"
+tag_format = "v$version"
+major_version_zero = true
+update_changelog_on_bump = true
+bump_message = "build: bump version to $new_version"
