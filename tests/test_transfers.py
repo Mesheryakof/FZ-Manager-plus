@@ -3,9 +3,32 @@ import asyncio
 import pytest
 
 from fz_manager_plus.application.transfers import ModTransferService
+from fz_manager_plus.domain.messages import ModEntry, ModsMessage
 from fz_manager_plus.domain.state import TransferProgress, TransferResult
 from fz_manager_plus.utils.concurrency import run_batched
 from tests.fakes import eventually, ready_session
+
+
+def test_prepare_skips_existing_and_flags_orphaned_remote_mods(tmp_path):
+    async def check():
+        session, _, _ = await ready_session()
+        await session.handle_message(
+            ModsMessage(
+                type="mods",
+                mods=[
+                    ModEntry(id=1, text="existing.zip", enabled=True),
+                    ModEntry(id=2, text="orphaned.zip", enabled=True),
+                ],
+            )
+        )
+        (tmp_path / "existing.zip").write_bytes(b"zip")
+        (tmp_path / "new.zip").write_bytes(b"zip")
+        plan = await ModTransferService(session).prepare(str(tmp_path))
+        assert [item.label for item in plan.upload] == ["new.zip"]
+        assert [mod.text for mod in plan.remove] == ["orphaned.zip"]
+        await session.aclose()
+
+    asyncio.run(check())
 
 
 def test_batch_reports_partial_failure_and_bounds_concurrency(tmp_path):
@@ -14,7 +37,7 @@ def test_batch_reports_partial_failure_and_bounds_concurrency(tmp_path):
         for index in range(5):
             (tmp_path / f"{index}.zip").write_bytes(b"zip")
         transfers = ModTransferService(session)
-        items = await transfers.prepare(str(tmp_path))
+        items = (await transfers.prepare(str(tmp_path))).upload
         active = peak = 0
         streams = []
 
@@ -50,7 +73,7 @@ def test_batch_cancellation_joins_jobs_and_closes_files(tmp_path):
         for index in range(4):
             (tmp_path / f"{index}.zip").write_bytes(b"zip")
         transfers = ModTransferService(session)
-        items = await transfers.prepare(str(tmp_path))
+        items = (await transfers.prepare(str(tmp_path))).upload
         streams = []
 
         async def upload(name, stream, size, progress):
@@ -82,7 +105,7 @@ def test_mod_mutations_wait_until_batch_finishes(tmp_path):
 
         api.hooks["upload_mod"] = upload
         batch = asyncio.create_task(
-            service.upload(await service.prepare(str(tmp_path)), lambda event: None)
+            service.upload((await service.prepare(str(tmp_path))).upload, lambda event: None)
         )
         await eventually(lambda: any(name == "upload_mod" for name, _ in api.calls))
         delete = asyncio.create_task(session.delete_mod(1))

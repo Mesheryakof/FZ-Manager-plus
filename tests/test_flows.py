@@ -1,10 +1,11 @@
 import asyncio
 from pathlib import Path
 
-from fz_manager_plus.domain.messages import RunningMessage
+from fz_manager_plus.domain.messages import ModEntry, ModsMessage, RunningMessage
 from fz_manager_plus.tui.components import ChoiceScreen, ConfirmScreen
 from fz_manager_plus.tui.flows.save_flows import SaveFlows
 from fz_manager_plus.tui.flows.server_flows import ServerFlows
+from fz_manager_plus.tui.flows.sync_flows import SyncFlows
 from tests.fakes import ready_session
 
 
@@ -67,6 +68,52 @@ def test_download_existing_archive_requires_confirmation(tmp_path):
         calls = [args for name, args in api.calls if name == "download_save"]
         assert calls[0][0] == "slot3"
         assert Path(calls[0][1]) == target
+        await session.aclose()
+
+    asyncio.run(check())
+
+
+def test_sync_flow_skips_nothing_to_sync_when_mods_already_match(tmp_path):
+    async def check():
+        session, _, _ = await ready_session()
+        await session.handle_message(
+            ModsMessage(type="mods", mods=[ModEntry(id=1, text="existing.zip", enabled=True)])
+        )
+        (tmp_path / "existing.zip").write_bytes(b"zip")
+        host = Host(session, [tmp_path])
+        await SyncFlows(host).run()
+        assert len(host.screens) == 1
+        assert "already matches" in host.logs[-1].plain
+        await session.aclose()
+
+    asyncio.run(check())
+
+
+def test_sync_flow_asks_before_removing_orphaned_remote_mods(tmp_path):
+    async def check():
+        session, api, _ = await ready_session()
+        await session.handle_message(
+            ModsMessage(
+                type="mods",
+                mods=[
+                    ModEntry(id=1, text="existing.zip", enabled=True),
+                    ModEntry(id=2, text="orphaned.zip", enabled=True),
+                ],
+            )
+        )
+        (tmp_path / "existing.zip").write_bytes(b"zip")
+        (tmp_path / "new.zip").write_bytes(b"zip")
+
+        host = Host(session, [tmp_path, [], False])
+        await SyncFlows(host).run()
+        assert isinstance(host.screens[-1], ConfirmScreen)
+        assert not any(name == "delete_mod" for name, _ in api.calls)
+        assert "skipped" in host.logs[-1].plain
+
+        host = Host(session, [tmp_path, [], True])
+        await SyncFlows(host).run()
+        assert ("delete_mod", (2,)) in api.calls
+        assert "Deleted 1 mod" in host.logs[-1].plain
         await session.aclose()
 
     asyncio.run(check())

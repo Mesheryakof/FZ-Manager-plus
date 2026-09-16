@@ -179,7 +179,7 @@ def test_quit_during_upload_cancels_jobs_and_closes_files(tmp_path):
         async with app.run_test(size=(100, 35)) as pilot:
             await eventually(lambda: app.session.state.connection == ConnectionStatus.CONNECTED)
             service = ModTransferService(app.session)
-            items = await service.prepare(str(tmp_path))
+            items = (await service.prepare(str(tmp_path))).upload
 
             async def upload(notify):
                 return await service.upload(items, notify)

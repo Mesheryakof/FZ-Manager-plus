@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from contextlib import asynccontextmanager, suppress
 from inspect import isawaitable
 from typing import TypeAlias, TypeVar
@@ -303,9 +303,11 @@ class FactorioZoneSession:
         async with self.operation("mods", "mods"):
             await self._call(lambda: self.api.delete_mod(mod_id))
 
-    async def delete_all_mods(self) -> None:
+    async def delete_mods(self, mod_ids: Collection[int]) -> None:
         async with self.operation("mods", "mods"):
             for mod in tuple(self.mods):
+                if mod.id not in mod_ids:
+                    continue
                 try:
                     await self._call(lambda entry=mod: self.api.delete_mod(entry.id))
                     await self.emit(LogEvent(f"Deleted {mod.text}", "info"))
@@ -313,6 +315,9 @@ class FactorioZoneSession:
                     raise
                 except OperationError as error:
                     await self.emit(LogEvent(f"{mod.text}: {error}", "error"))
+
+    async def delete_all_mods(self) -> None:
+        await self.delete_mods({mod.id for mod in self.mods})
 
     def used_save_slots(self) -> list[tuple[int, str]]:
         return sorted(
