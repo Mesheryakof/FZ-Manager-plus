@@ -36,12 +36,16 @@ jobs:
       - run: uv run isort --check-only fz_manager_plus tests
 
   test:
-    name: Tests (pytest)
+    name: Tests (pytest, Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync --group dev --locked
+      - run: uv sync --group dev --locked --python ${{ matrix.python-version }}
       - run: uv run pytest -q

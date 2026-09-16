@@ -83,7 +83,7 @@ The composition root is `fz_manager_plus/runtime.py`. `domain` defines state and
 
 ### CI
 
-`.github/workflows/ci.yml` runs `lint`, `format` and `test` as separate jobs on every pull request targeting `main`. Every job fails the check instead of auto-fixing, and `uv sync --group dev --locked` also fails the job if `uv.lock` is out of date.
+`.github/workflows/ci.yml` runs `lint`, `format` and `test` as separate jobs on every pull request targeting `main`. `test` runs against a matrix of Python 3.11, 3.12, 3.13 and 3.14 (the supported range). Every job fails the check instead of auto-fixing, and `uv sync --group dev --locked` also fails the job if `uv.lock` is out of date.
 
 ### Releasing a new version
 
