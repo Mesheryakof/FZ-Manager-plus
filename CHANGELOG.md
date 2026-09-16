@@ -1,3 +1,13 @@
+## v0.2.0 (2026-09-16)
+
+### Feat
+
+- **tui**: make the status bar server address click to join via Steam
+
+### Refactor
+
+- lower Python floor to 3.11
+
 ## v0.1.2 (2026-09-16)
 
 ### Feat
