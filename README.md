@@ -13,6 +13,12 @@ fzmp
 fz-manager-plus
 ```
 
+Or, without touching any existing Python environment:
+
+```sh
+uv tool install fz-manager-plus
+```
+
 Run `fzmp --help` to see settings and command-line options. Enter an existing Factorio Zone token, or submit an empty token to create a new account.
 
 ## Available in the TUI
