@@ -21,7 +21,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --group dev --locked
-      - run: uv run ruff check fz_manager_plus tests
+      - run: uv run ruff check source tests
 
   format:
     name: Format check (ruff format, isort)
@@ -32,8 +32,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --group dev --locked
-      - run: uv run ruff format --check fz_manager_plus tests
-      - run: uv run isort --check-only fz_manager_plus tests
+      - run: uv run ruff format --check source tests
+      - run: uv run isort --check-only source tests
 
   test:
     name: Tests (pytest, Python ${{ matrix.python-version }})

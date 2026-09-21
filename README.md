@@ -72,15 +72,15 @@ uv sync --group dev
 Each command only reports; none of them rewrite files. Run before pushing — this is the same set of checks GitHub Actions runs on a pull request, so a green run locally means a green PR:
 
 ```sh
-uv run ruff check fz_manager_plus tests
-uv run ruff format --check fz_manager_plus tests
-uv run isort --check-only fz_manager_plus tests
+uv run ruff check source tests
+uv run ruff format --check source tests
+uv run isort --check-only source tests
 uv run pytest -q
 ```
 
 Tests use fake transports and temporary directories; they do not call Factorio Zone.
 
-The composition root is `fz_manager_plus/runtime.py`. `domain` defines state and messages, `application` owns session/transfer workflows, `infrastructure` implements transports and archive utilities, and `tui` contains Textual views and user interaction. Rich styling stays at the UI boundary in `terminal.py`.
+The package lives under `source/fz_manager_plus` so additional libraries can be developed alongside it inside `source/`. The composition root is `source/fz_manager_plus/runtime.py`. `domain` defines state and messages, `application` owns session/transfer workflows, `infrastructure` implements transports and archive utilities, and `tui` contains Textual views and user interaction. Rich styling stays at the UI boundary in `terminal.py`.
 
 ### CI
 

@@ -35,7 +35,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["fz_manager_plus"]
+packages = ["source/fz_manager_plus"]
 
 [build-system]
 requires = ["hatchling"]
@@ -44,6 +44,7 @@ build-backend = "hatchling.build"
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+src = ["source", "tests"]
 
 [tool.ruff.format]
 skip-magic-trailing-comma = false
@@ -56,6 +57,7 @@ ignore = ["E501"]
 profile = "black"
 line_length = 100
 known_first_party = ["fz_manager_plus"]
+src_paths = ["source", "tests"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
