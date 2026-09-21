@@ -1,3 +1,9 @@
+## v0.6.1 (2026-09-21)
+
+### Refactor
+
+- **tui**: drop hover action buttons on mods and saves panes
+
 ## v0.6.0 (2026-09-21)
 
 ### Feat
