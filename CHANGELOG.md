@@ -1,3 +1,14 @@
+## v0.6.0 (2026-09-21)
+
+### Feat
+
+- **tui**: show toggle/download/upload keybindings in the footer
+- **tui**: hover-revealed action buttons on mods and saves
+
+### Refactor
+
+- move package into source/ layout
+
 ## v0.5.0 (2026-09-16)
 
 ### Feat
