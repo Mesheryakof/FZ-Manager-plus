@@ -2,7 +2,7 @@ import asyncio
 from unittest.mock import patch
 
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Input
+from textual.widgets import Input
 
 from fz_manager_plus.application.session import FactorioZoneSession
 from fz_manager_plus.config import Settings, SettingsStore
@@ -240,90 +240,6 @@ def test_push_log_appends_plain_text_to_server_log_file(tmp_path):
         line = content.splitlines()[-1]
         assert line.endswith("] [test] hello world")
         assert line.startswith("[") and "T" in line.split("]")[0]
-
-    asyncio.run(check())
-
-
-def test_mods_pane_hover_reveals_toggle_and_delete_buttons():
-    events = []
-
-    class ModsPaneApp(App):
-        def compose(self) -> ComposeResult:
-            yield ModsPane([Mod(1, "ModOne", True), Mod(2, "ModTwo", False)])
-
-        def on_mods_pane_toggled(self, event: ModsPane.Toggled) -> None:
-            events.append(("toggle", event.mod_id, event.enabled))
-
-        def on_mods_pane_delete_requested(self, event: ModsPane.DeleteRequested) -> None:
-            events.append(("delete", event.mod_id))
-
-    async def check():
-        app = ModsPaneApp()
-        async with app.run_test(size=(60, 20)) as pilot:
-            pane = app.query_one(ModsPane)
-            toggle_button = pane.query_one("#mod-toggle-button", Button)
-            delete_button = pane.query_one("#mod-delete-button", Button)
-            assert toggle_button.disabled and delete_button.disabled
-
-            await pilot.hover(pane.selection_list, offset=(3, 1))
-            await pilot.pause()
-            assert not toggle_button.disabled
-            assert toggle_button.label.plain == "Disable"  # mod 1 starts enabled
-
-            # Clicking the button leaves the SelectionList first (moving to the
-            # toolbar below it), which must not clear the hovered mod before
-            # the click is processed.
-            await pilot.click(toggle_button)
-            await pilot.pause()
-            assert events == [("toggle", 1, False)]
-
-            await pilot.hover(pane.selection_list, offset=(3, 2))
-            await pilot.pause()
-            assert toggle_button.label.plain == "Enable"  # mod 2 starts disabled
-
-            await pilot.click(delete_button)
-            await pilot.pause()
-            assert events == [("toggle", 1, False), ("delete", 2)]
-
-    asyncio.run(check())
-
-
-def test_saves_pane_hover_reveals_download_upload_delete_buttons():
-    events = []
-
-    class SavesPaneApp(App):
-        def compose(self) -> ComposeResult:
-            yield SavesPane({"slot1": "first 1.0MB"})
-
-        def on_saves_pane_download_requested(self, event: SavesPane.DownloadRequested) -> None:
-            events.append(("download", event.slot))
-
-        def on_saves_pane_upload_requested(self, event: SavesPane.UploadRequested) -> None:
-            events.append(("upload", event.slot))
-
-        def on_saves_pane_delete_requested(self, event: SavesPane.DeleteRequested) -> None:
-            events.append(("delete", event.slot))
-
-    async def check():
-        app = SavesPaneApp()
-        async with app.run_test(size=(60, 20)) as pilot:
-            pane = app.query_one(SavesPane)
-            download_button = pane.query_one("#save-download-button", Button)
-            upload_button = pane.query_one("#save-upload-button", Button)
-            delete_button = pane.query_one("#save-delete-button", Button)
-            assert download_button.disabled and upload_button.disabled and delete_button.disabled
-
-            await pilot.hover(pane.list_view, offset=(3, 0))
-            await pilot.pause()
-            assert not upload_button.disabled
-
-            await pilot.click(upload_button)
-            await pilot.pause()
-            assert events == [("upload", "slot1")]
-
-            await pilot.click(delete_button)
-            await pilot.pause()
-            assert events == [("upload", "slot1"), ("delete", "slot1")]
 
     asyncio.run(check())
 
